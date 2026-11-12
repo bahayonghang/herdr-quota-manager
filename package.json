@@ -1,0 +1,17 @@
+{
+  "name": "herdr-quota-manager",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Selectable provider quota monitoring for the native Herdr desktop app",
+  "license": "MIT",
+  "engines": { "node": ">=22.19.0" },
+  "scripts": {
+    "test": "node --test",
+    "test:coverage": "node --experimental-test-coverage --test",
+    "check": "node scripts/check.mjs",
+    "check:herdr": "node scripts/check-herdr.mjs",
+    "install:mod": "node scripts/install.mjs",
+    "validate": "npm run check && npm test"
+  }
+}
