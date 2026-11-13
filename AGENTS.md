@@ -41,22 +41,23 @@ Read `docs/ARCHITECTURE.md` and `SECURITY.md` before changing behavior. Coding r
 
 ## Runtime boundary
 
-Mod files may import `gpui-kit`, `gpui-base`, `herdr`, and relative `./` modules. `scripts/check.mjs` rejects `node:` imports, `require(`, `setTimeout`, and `setInterval` in `mods/quota-manager/`.
+Mod files may import `gpui-kit`, `gpui-base`, `herdr`, relative `./` modules, and (inside `mods/quota-manager/vendor/quota-axi/`) Herdr's unprefixed runtime built-ins (`fs/promises`, `crypto`, `buffer`, `path`, `url`, `os`). `scripts/check.mjs` rejects `node:` imports, `require(`, `setTimeout`, and `setInterval` in `mods/quota-manager/`.
 
-`main.js` owns the View, timers, `cx.spawn`, and host calls. `ui.js` returns nodes. `model.js` normalizes reports. `store.js` admits work and writes shared state. `command.js` is the only module that builds a collector command.
+`main.js` owns the View, timers, `cx.spawn`, and host calls. `ui.js` returns nodes. `model.js` normalizes reports. `store.js` admits work and writes shared state. `command.js` is the only module that invokes `queryLocalQuota` or builds a remote collector command.
 
 ## Contracts
 
 - Provider ids come from `providers.js`. Preferences never become shell text.
-- `consent` gates collection. Query OFF removes a provider before any subprocess. Show OFF only hides rows.
-- `fetchQuota` passes `--json --provider <id> --no-credential-refresh`. Manual refresh uses `--max-age 0`. Exit code 1 is parsed once and is not retried through another shell.
+- `consent` gates collection. Query OFF removes a provider before any query or subprocess. Show OFF only hides rows.
+- A local `fetchQuota` (`on == null`) calls `queryLocalQuota` directly in-process from `mods/quota-manager/vendor/quota-axi/index.js` (`allowKeychainPrompt: false, refreshCredentials: false`, `maxAgeSeconds` `0` on manual refresh or `90` on automatic poll), passing the returned JSON string to `parseReport` / `normalizeReport`. A remote call (`on != null`) runs `quota-axi` with `--json --provider <id> --no-credential-refresh` (`--max-age 0` or `90s`). Exit code 1 is parsed once and is not retried through another shell.
 - Only quota-axi schema 5 and 6 are accepted. Unknown JSON throws `invalid_report`.
 - Do not persist emails, tokens, raw errors, remedy commands, or stderr. Visible errors use keys in `i18n.js`.
 - A `shareOf` window has no remaining percent. A passed reset does not refill a bar. Do not add percentages across windows or providers.
 - Cache, lease, history, and alert keys are `quota-manager.v1.<kind>:[machine, provider]`. Do not edit `shared.json`.
 - Remote `exec` always receives the captured `{ on: machine }`. There is no remote-to-local fallback.
 - Muse query requires `museConsent`. Select detected must not enable Muse.
-- The installer stages, runs `herdr-app check`, then swaps the directory. A failed check leaves the existing install in place. Uninstall only moves a directory whose `.quota-manager-install.json` names this project. Preferences and history stay.
+- `scripts/build-vendor.mjs` compiles `third_party/quota-axi` (quota-axi 0.1.69, commit `5734c41eee52eb9a80ba67f47269ebc06c0c41fc`, MIT, Copyright (c) 2026 Kun Chen) and emits the adapted core ES modules under `mods/quota-manager/vendor/quota-axi/`. The installer runs that build, stages the Mod, runs `herdr-app check`, swaps `<app-home>/mods/quota-manager`, and retires any `.quota-manager-collector.json`-marked `collectors/quota-manager` or `collectors/quota-axi` directories into `.quota-manager-backups/`. A failed check leaves any existing Mod and owned collector directories in place. Uninstall only moves a Mod whose `.quota-manager-install.json` names this project, and retires owned collector directories. Preferences and history stay.
+- Local queries run directly inside the Mod via `mods/quota-manager/vendor/quota-axi/` without spawning `node` or launching a CLI binary. Remote queries still look up `quota-axi` on that machine. There is no remote-to-local fallback and no local fallback to a global install.
 
 ## Where to edit
 
@@ -67,10 +68,13 @@ Mod files may import `gpui-kit`, `gpui-base`, `herdr`, and relative `./` modules
 | Copy, both languages | `mods/quota-manager/i18n.js` |
 | Allowlist | `mods/quota-manager/providers.js` |
 | Preferences | `mods/quota-manager/config.js` |
-| Process invocation | `mods/quota-manager/command.js` |
+| Local vendor invocation & remote exec | `mods/quota-manager/command.js` |
+| Vendor bundle build & runtime shim | `scripts/build-vendor.mjs` |
+| Generated in-Mod quota-axi modules | `mods/quota-manager/vendor/quota-axi/` |
 | Schema and display math | `mods/quota-manager/model.js` |
 | Leases, cache, history, alerts | `mods/quota-manager/store.js` |
 | Install and uninstall | `scripts/install.mjs` |
+| Vendored collector source | `third_party/quota-axi/` |
 
 A new provider id starts in `providers.js` and needs a fixture in `tests/model.test.mjs`. Do not add a free-form shell setting. Do not add another collector adapter unless a second real collector exists.
 

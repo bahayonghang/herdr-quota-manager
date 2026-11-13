@@ -4,7 +4,7 @@
 
 Herdr runs JavaScript describing GPUI nodes. The Mod does not import Node built-ins, DOM APIs, React, or npm libraries. Host calls happen only inside View lifecycle/event tasks. `cx.spawn`, `cx.timer`, `cx.notify`, `openOverlay`, and `shared` are the integration points.
 
-The external `quota-axi` process owns provider auth discovery and first-party network calls. Its documented 0.1.69 interface and schema versions 5/6 are the adapter boundary. The catalog is explicit and extendable in source; arbitrary commands or unvalidated provider identifiers are not accepted through preferences.
+The vendored quota-axi library owns provider auth discovery and first-party network calls. This repository keeps its 0.1.69 source at `third_party/quota-axi` (commit `5734c41eee52eb9a80ba67f47269ebc06c0c41fc`, MIT, Copyright (c) 2026 Kun Chen). `scripts/build-vendor.mjs` compiles and adapts the core query graph into `mods/quota-manager/vendor/quota-axi/`, shimming synchronous `node:fs` / `os` / `process` usage via Herdr's embedded unprefixed built-ins (`fs/promises`, `crypto`, `buffer`, `path`, `url`, `os`) and global `fetch`. Local queries call `queryLocalQuota` directly in-process inside the Mod without spawning `node` or launching a CLI binary. Remote machines still invoke `quota-axi` via `exec(..., { on: machine })`. Schema versions 5/6 remain the adapter boundary. The catalog is explicit and extendable in source; arbitrary commands or unvalidated provider identifiers are not accepted through preferences.
 
 ```
 Native status bar / popup / settings / snapshot history
@@ -13,7 +13,9 @@ Native status bar / popup / settings / snapshot history
                  │
         per-machine/provider admission + cache
                  │
- quota-axi --provider <allowlisted id> --json --no-credential-refresh
+ local:  in-Mod queryLocalQuota(id, { force, platform, home, appHome })
+         -> mods/quota-manager/vendor/quota-axi/index.js
+ remote: exec("quota-axi", ["--json", "--provider", id, "--no-credential-refresh", ...], { on: machine })
                  │
        normalized, non-secret account lanes
 ```

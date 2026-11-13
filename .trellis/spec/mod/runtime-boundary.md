@@ -14,11 +14,15 @@ Host calls belong in `main.js` tasks. `ui.js` receives plain data and a theme ob
 | --- | --- |
 | `main.js` | `gpui-kit` `View`; `herdr` host functions; relative `./` modules |
 | `ui.js` | `gpui-kit` `div`, `image`, and `svg`; `gpui-base` `h_flex` / `v_flex`; `./providers.js`, `./i18n.js`, `./model.js` |
-| `config.js`, `command.js`, `model.js`, `store.js`, `providers.js`, `i18n.js` | relative Mod modules only |
+| `command.js` | `./providers.js`, `./model.js`, `./vendor/quota-axi/index.js` |
+| `vendor/quota-axi/*.js` | relative `./` / `../` modules inside `vendor/quota-axi/`; unprefixed Herdr/Node built-ins (`fs/promises`, `crypto`, `buffer`, `path`, `url`, `os`) and global `fetch` |
+| `config.js`, `model.js`, `store.js`, `providers.js`, `i18n.js` | relative Mod modules only |
 
-`herdr` symbols used today: `exec`, `props`, `theme`, `shared`, `setShared`, `spaces`, `window`, `knownAgents`, `openOverlay`, `closeOverlay`, `nextCommand`, `run`, `notify`.
+`herdr` symbols used today: `exec`, `props`, `theme`, `shared`, `setShared`, `spaces`, `agents`, `keys`, `window`, `knownAgents`, `openOverlay`, `closeOverlay`, `nextCommand`, `run`, `notify`, `home`, `appHome`.
 
-Provider tiles use `image("mods/quota-manager/icons/<id>.svg")`. Refresh and settings use `svg()`. `main.js` does not import `h_flex`; the pill is `quotaStrip` in `ui.js`. Paint does not call `window()`.
+`main.js` passes `local: { home: () => home(), appHome: () => appHome() }` into `QuotaStore` so `command.js` forwards the host paths to `queryLocalQuota` when `on == null`. `command.js` does not import `herdr`. No Mod module spawns `node`, runs `query.mjs`, or invokes a local `quota-axi` binary.
+
+The bar calls `spaces()`, `agents()`, and `keys()` while painting, and `window()?.platform` only to format the palette hint. `herdr-app check` has no window, so that call stays optional. Provider marks are chosen in `ui.js`: a `BRAND` entry uses `icons/<file>.svg` from the Herdr home (`image` or tinted `svg`), and every other id uses `image("mods/quota-manager/icons/<id>.svg")`. Refresh and settings use `svg()`. `main.js` does not import `h_flex`; `quotaBar` in `ui.js` builds the status row.
 
 ## View lifecycle
 

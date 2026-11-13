@@ -3,9 +3,9 @@
 One owner per boundary:
 
 ```
-quota-axi stdout → model.parseReport / normalizeReport → store cache
-preferences     → config.normalizeConfig               → main.js / ui.js
-provider id     → providers.assertProvider              → command.queryArgs
+local queryLocalQuota / remote quota-axi stdout → model.parseReport / normalizeReport → store cache
+preferences                                     → config.normalizeConfig               → main.js / ui.js
+provider id                                     → providers.assertProvider              → command.js
 ```
 
 UI code consumes normalized lanes and `normalizeConfig` output. It does not parse stdout or raw account keys.
@@ -52,7 +52,7 @@ Add a provider by extending the `PROVIDERS` table, then add a schema fixture. Do
 - else `scope === "local"` returns `null`
 - else the active space's `machine`, or `null`
 
-## Collector command
+## Collector command & in-Mod local query
 
 `queryArgs(id, force)` returns:
 
@@ -60,17 +60,22 @@ Add a provider by extending the `PROVIDERS` table, then add a schema fixture. Do
 ["--json", "--provider", assertProvider(id), "--no-credential-refresh", "--max-age", force ? "0" : "90s"]
 ```
 
-`commandsFor` never interpolates paths, machine names, tokens, or other user text. The shell string is only `quota-axi` plus those fixed args.
+When `fetchQuota(exec, id, { on = null, platform = "unknown", force = false, now = Date.now, local = null })` is called with `on == null` (local machine):
 
-| `platform` | Attempts, in order |
-| --- | --- |
-| `"windows"` | direct `quota-axi`, then `cmd.exe /d /s /c` |
-| `"unknown"` | direct, login shell, then `cmd.exe` |
-| anything else | direct, then login shell |
+- It never calls `exec`, never spawns `node`, and never starts an external CLI.
+- It calls `queryLocalQuota(providerId, { force, platform, home, appHome })` in-process from `mods/quota-manager/vendor/quota-axi/index.js` (`allowKeychainPrompt: false, refreshCredentials: false`, `maxAgeSeconds` `0` if `force` else `90`), where `home` and `appHome` come from `local` (`main.js` binds them to Herdr `home()` and `appHome()`).
+- Thrown messages matching `timeout`, `timed out`, `unreachable`, `disconnect`, or `offline` map to `host_unavailable`; `invalid_report` and `cli_missing` pass through as fixed keys; any other error maps to redacted `cli_failed`.
+- Returned JSON string passes directly through `parseReport` and `normalizeReport`.
 
-`fetchQuota(exec, id, options)` passes `{ on, timeout: 45000 }` on every attempt. `on` may be `null`.
+When `on != null` (remote machine):
 
-| Outcome | Behavior |
+- `commandsFor(id, platform, force)` builds shell-safe invocations for `quota-axi` plus `queryArgs`. Local paths (`home`, `appHome`) never enter remote commands.
+- `exec` is called with `{ on, timeout: 45000 }`, never falls back to `queryLocalQuota`:
+  - `platform === "windows"`: direct `quota-axi`, then `cmd.exe /d /s /c`
+  - `platform === "unknown"`: direct, login shell (`sh`), then `cmd.exe`
+  - anything else: direct, then login shell (`sh`)
+
+| Remote outcome | Behavior |
 | --- | --- |
 | `exec` throws and the message matches `timeout`, `timed out`, `unreachable`, `disconnect`, or `offline` | throw `host_unavailable`; do not try the next shell |
 | `exec` throws anything else | try the next command |

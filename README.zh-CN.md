@@ -23,10 +23,9 @@ Provider 白名单包含 Codex、Antigravity（`agy`）、Grok、Cursor、Claude
 
 ## Windows 安装
 
-需要 **Node.js 22.19+** 和已经安装的 Herdr 桌面应用。将 `herdr-app` 所在目录加入 PATH。PowerShell 中运行：
+需要 **Node.js 22.19+**、pnpm（用于构建阶段），以及已经安装的 Herdr 桌面应用。将 `herdr-app` 所在目录加入 PATH。采集实现参考并打包自仓库内的 quota-axi 0.1.69 源码快照，路径 `third_party/quota-axi`，提交 `5734c41eee52eb9a80ba67f47269ebc06c0c41fc`，版权 Copyright (c) 2026 Kun Chen，MIT；安装与构建脚本 `scripts/build-vendor.mjs` 会将其核心查询逻辑编译适配到 `mods/quota-manager/vendor/quota-axi/`，由 Mod 在进程内直接调用，本机不启动独立 CLI 或 Node 子进程。远程机器仍需要自己的 PATH 中的 quota-axi，以及当地的 Provider 登录。PowerShell 中运行：
 
 ```powershell
-npm install -g quota-axi@0.1.69
 git clone https://github.com/bahayonghang/herdr-quota-manager.git
 cd herdr-quota-manager
 node scripts/install.mjs
@@ -42,7 +41,7 @@ node scripts/install.mjs --app-home "C:\Users\你的用户名\.config\herdr-app"
 
 安装器先在暂存目录运行 `herdr-app check`，通过后才安装，并备份旧版本。找不到 Herdr 或原生检查失败时会退出，已有 Mod 不受影响。开发者可以显式传入 `--skip-native-check` 跳过，但这不等于安装已验证。
 
-安装后 Herdr 首次发现 Mod 时可将其放在窗口底部。点击设置，选择 Provider，再点击 **Start selected queries / 开始查询所选服务**。新安装预选截图中的 Codex、Antigravity、Grok、Cursor，但点击开始前不进行额度查询。更新安装会保留已有设置和授权状态。
+额度芯片画在现有状态栏里，紧挨命令快捷键的左边，不再单独占一行。点击设置标记，选择 Provider，再点击 **Start selected queries / 开始查询所选服务**。新安装预选 Codex、Antigravity、Grok、Cursor，但点击开始前不进行额度查询。更新安装会保留已有设置和授权状态。`mod.json` 的 `place` 是 `none`。在个人布局里把 28px 状态栏块的 `content.mod` 改成 `quota-manager`，并删掉旧的额度块。安装器不会改布局。
 
 设置中的 Language 可切换到中文。原生界面尚需在你的实际 Herdr 版本中验收，具体检查项见 [VALIDATION.md](docs/VALIDATION.md)。
 
@@ -54,9 +53,9 @@ node scripts/install.mjs --app-home "C:\Users\你的用户名\.config\herdr-app"
 
 所有 Query 均关闭时，不会执行默认查询所有服务的裸 `quota-axi` 命令。每次采集都有明确 Provider，例如：
 
-```powershell
-quota-axi --json --provider codex --no-credential-refresh --max-age 90s
-```
+本机查询由 `command.js` 直接调用集成在 `mods/quota-manager/vendor/quota-axi/index.js` 中的 `queryLocalQuota`（`allowKeychainPrompt: false`、`refreshCredentials: false`），在进程内直接完成读取，不启动 `node` 或 `quota-axi` CLI。
+
+远程机器仍执行带 `--json --provider <id> --no-credential-refresh` 的 `quota-axi` 程序。
 
 手动刷新使用 `--max-age 0`，但依然遵守服务端 Retry-After 及本地五秒冷却。“仅手动”模式在启动、切换机器后也不自动查询；点击“开始”视为一次明确的手动查询。已经启动的外部进程无法通过当前 Herdr exec API 强制取消，但停用后的返回结果会丢弃。
 
@@ -72,7 +71,7 @@ quota-axi --json --provider codex --no-credential-refresh --max-age 90s
 
 ## 远程机器与账号
 
-远程机器需要独立安装 Node、quota-axi，并在当地登录 Provider CLI。主查询与所有启动回退都携带同一机器标识，绝不在远程失败后读取本机凭据。
+本机查询直接在 Mod 进程内通过 `mods/quota-manager/vendor/quota-axi/index.js` 完成（通过 `home()` 读取凭据位置、通过 `appHome()/quota-manager-collector/` 写入缓存），不启动 `node` 也不查找全局 `quota-axi`。远程机器需要独立安装 Node、quota-axi，并在当地登录 Provider CLI。主查询与所有启动回退都携带同一 `{ on: machine }` 机器标识，绝不向远程传递本机路径，也绝不回退到本机凭据。
 
 弹窗固定其打开时的机器；切换空间或机器偏好后，重新打开弹窗才会切换目标。采集环境来自 Herdr 在对应机器上的执行环境，不会读取终端文本去猜测某个会话的 `CODEX_HOME`、`CLAUDE_CONFIG_DIR` 或容器凭据。
 
@@ -101,7 +100,7 @@ npm run test:coverage
 npm run check:herdr
 ```
 
-安装器不改写整个布局、快捷键或 `shared.json`。旧版本保留在 `<Herdr目录>/.quota-manager-backups/`。卸载后，个人布局中若还保留对应块，请手动移除；全局 quota-axi 不会被卸载。
+安装器不改写整个布局、快捷键或 `shared.json`。旧版本保留在 `<Herdr目录>/.quota-manager-backups/`。安装和卸载都会把带有本项目 `.quota-manager-collector.json` 标记的旧版 `collectors/` 目录移至备份目录；卸载会同时移走带有本项目标记的 Mod。个人布局中若还保留对应块，请手动移除。没有本项目标记的目录会原样保留。
 
 键盘：聚焦 Mod 后，U / S / H / R 分别进入额度、设置、历史、刷新；Esc 关闭。设置中 ↑↓ 选服务，Space 切查询，Shift+Space 切显示，Ctrl+↑↓ 调整顺序。
 
