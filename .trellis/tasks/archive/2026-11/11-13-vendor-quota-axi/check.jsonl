@@ -1,0 +1,12 @@
+{"file": ".trellis/tasks/11-13-vendor-quota-axi/research/upstream.md", "reason": "Verify the snapshot matches the inspected upstream pin and MIT license"}
+{"file": ".trellis/tasks/11-13-vendor-quota-axi/research/mod-runtime.md", "reason": "Verify generated Mod modules respect herdr-app check and check.mjs constraints"}
+{"file": ".trellis/tasks/11-13-vendor-quota-axi/prd.md", "reason": "Acceptance criteria and rejected approaches to verify"}
+{"file": ".trellis/tasks/11-13-vendor-quota-axi/design.md", "reason": "Technical boundaries the diff must stay inside"}
+{"file": ".trellis/tasks/11-13-vendor-quota-axi/implement.md", "reason": "Implementation sequence, guardrails, and validation commands"}
+{"file": ".trellis/spec/mod/index.md", "reason": "Mod quality check"}
+{"file": ".trellis/spec/mod/data-contracts.md", "reason": "Direct local query, remote flags, exit handling, and schema 5/6"}
+{"file": ".trellis/spec/mod/runtime-boundary.md", "reason": "Import and host-call boundary"}
+{"file": ".trellis/spec/mod/directory-structure.md", "reason": "File ownership"}
+{"file": ".trellis/spec/tooling/installer.md", "reason": "Failed check leaves live install untouched; only marked collectors move aside"}
+{"file": "docs/ARCHITECTURE.md", "reason": "Architecture contracts"}
+{"file": "SECURITY.md", "reason": "Privacy and consent constraints"}

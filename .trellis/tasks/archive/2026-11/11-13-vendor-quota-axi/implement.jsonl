@@ -1,0 +1,12 @@
+{"file": ".trellis/tasks/11-13-vendor-quota-axi/research/upstream.md", "reason": "Pinned upstream SHA, license, package layout, and local toolchain"}
+{"file": ".trellis/tasks/11-13-vendor-quota-axi/research/mod-runtime.md", "reason": "Empirical herdr-app check and check.mjs import/global evidence and minimal shim design"}
+{"file": ".trellis/tasks/11-13-vendor-quota-axi/prd.md", "reason": "Requirements, rejected approaches, and acceptance criteria"}
+{"file": ".trellis/tasks/11-13-vendor-quota-axi/design.md", "reason": "In-Mod vendor bundle, Herdr runtime shims, remote boundary, and collector retirement"}
+{"file": ".trellis/tasks/11-13-vendor-quota-axi/implement.md", "reason": "Ordered implementation sequence, guardrails, validation, and rollback"}
+{"file": ".trellis/spec/mod/index.md", "reason": "Mod pre-development checklist"}
+{"file": ".trellis/spec/mod/data-contracts.md", "reason": "Local vs remote query contract and schema 5/6 normalization"}
+{"file": ".trellis/spec/mod/runtime-boundary.md", "reason": "Allowed Mod imports; main.js owns herdr calls"}
+{"file": ".trellis/spec/mod/directory-structure.md", "reason": "File ownership across mods/quota-manager and scripts"}
+{"file": ".trellis/spec/tooling/installer.md", "reason": "Stage, native check, swap, and marker-gated collector retirement"}
+{"file": "docs/ARCHITECTURE.md", "reason": "In-Mod local query vs remote exec architecture"}
+{"file": "SECURITY.md", "reason": "Consent gate, redaction, no persisted stderr/emails/tokens, no runtime download"}
