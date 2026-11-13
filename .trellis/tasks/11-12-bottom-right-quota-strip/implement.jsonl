@@ -1,0 +1,14 @@
+{"file": ".trellis/tasks/11-12-bottom-right-quota-strip/research/design-c6579289.md", "reason": "Approved design: placement, stripFace, icons, tests, PR plan"}
+{"file": ".trellis/spec/mod/index.md", "reason": "Mod pre-development checklist and quality check"}
+{"file": ".trellis/spec/mod/ui.md", "reason": "Nodes, copy, chip ids, and bar layout contracts"}
+{"file": ".trellis/spec/mod/runtime-boundary.md", "reason": "main.js versus ui.js imports and host calls"}
+{"file": ".trellis/spec/mod/directory-structure.md", "reason": "Which file owns a quota-manager change"}
+{"file": ".trellis/spec/mod/data-contracts.md", "reason": "Consent, percent, and provider id contracts"}
+{"file": ".trellis/spec/tooling/installer.md", "reason": "Installer must not rewrite layouts or shared.json"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "UI change must not drift from store and collector"}
+{"file": "docs/ARCHITECTURE.md", "reason": "Runtime contracts for quota collection and display"}
+{"file": "docs/VALIDATION.md", "reason": "Live acceptance for the Herdr window"}
+{"file": "SECURITY.md", "reason": "No persisted secrets, stderr, or credential refresh"}
+{"file": ".trellis/tasks/11-12-bottom-right-quota-strip/prd.md", "reason": "Requirements and acceptance criteria"}
+{"file": ".trellis/tasks/11-12-bottom-right-quota-strip/design.md", "reason": "Task boundary; research doc is normative"}
+{"file": ".trellis/tasks/11-12-bottom-right-quota-strip/implement.md", "reason": "Ordered checklist, validation, rollback"}

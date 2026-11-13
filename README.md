@@ -43,18 +43,7 @@ The installer checks a staging copy with `herdr-app check` **before** changing a
 
 On first discovery, Herdr can dock the Mod as a 30px bottom strip. Click its settings button, select providers, then **Start selected queries**. First-run defaults select Codex / Antigravity / Grok / Cursor but **do not query until Start is clicked**. An upgrade preserves an existing user's consent and preferences.
 
-A personal layout can place it explicitly:
-
-```json
-{
-  "id": "quota-manager",
-  "type": "block",
-  "content": { "mod": "quota-manager" },
-  "size": { "px": 30 }
-}
-```
-
-Clone a shipped layout before changing its structure. Do not overwrite a user's complete layout to add this block.
+`place: "bottom"` is the only automatic slot. Herdr docks one 30px block the first time it sees the Mod, and only into the layout that is shown. That dock lasts only on a personal layout. A first sight while shipped `main`, `terminals`, or `win98` is shown does not leave a dock after the next start, and Herdr will not dock again. Clone a shipped layout before any structural edit. Do not paste a `quota-manager` block, and do not add a second one when the bottom dock is already present. A hidden block still polls. Do not overwrite a user's layout.
 
 ## Usage
 

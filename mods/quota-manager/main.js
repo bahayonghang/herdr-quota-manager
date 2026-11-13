@@ -1,11 +1,11 @@
-import { View, div } from "gpui-kit";
+import { View } from "gpui-kit";
 import { exec, props, theme, shared, setShared, spaces, window, knownAgents, openOverlay, closeOverlay, nextCommand, run, notify } from "herdr";
 import { IDS, provider, detectedProviders } from "./providers.js";
 import { CONFIG_KEY, INTERVALS, KINDS, normalizeConfig, changeConfig, moveProvider, machineFor } from "./config.js";
 import { headline } from "./model.js";
 import { QuotaStore, stateKey } from "./store.js";
 import { tr } from "./i18n.js";
-import { button, line, text, note, row, column, choice, toggle, providerCard, chip } from "./ui.js";
+import { button, line, text, note, row, column, choice, toggle, providerCard, quotaStrip } from "./ui.js";
 
 export default class QuotaManager extends View {
   init(_props, cx) {
@@ -40,7 +40,9 @@ export default class QuotaManager extends View {
   }
   save(patch, cx) { setShared(CONFIG_KEY, changeConfig(this.config(), patch)); cx.notify(); }
   poll(cx, force = false, only = null) {
-    const host = this.host(), platform = host === null ? window().platform : "unknown";
+    const host = this.host();
+    // herdr-app check has no window, so window() is null. A missing platform tries every launcher.
+    const platform = host === null ? (window()?.platform ?? "unknown") : "unknown";
     cx.spawn(async cx => { await this.store.refresh(host, platform, { force, only }); cx.notify(); });
   }
   open(view = "usage") {
@@ -107,17 +109,18 @@ export default class QuotaManager extends View {
     if (!this.store) return text("Quota Manager", t); // Initial headless description can precede init.
     const items = this.items(cfg);
     if (this.screen === "bar") {
-      const small = this.width < 600, capacity = Math.max(0, Math.floor((this.width - 180) / (small ? 78 : 125)));
-      return row().id("quota-manager-bar").size_full().px(8).gap(5).bg(t.chrome).border_t(1).border_color(t.border)
-        .track_focus(this.focusHandle).on_key_down((e, cx) => this.key(e, cx))
-        .on_size_change((size, cx) => { if (Math.abs(this.width - size.width) > 1) { this.width = size.width; cx.notify(); } })
-        .child(button("open", cfg.consent ? `◴ ${tr(cfg, cfg.percentage)}` : `◴ ${tr(cfg, "settings")}`,
-          () => this.open(cfg.consent ? "usage" : "settings"), t))
-        .children(items.slice(0, capacity).map(item => chip(item, cfg, t, now, () => this.open("usage"), small)))
-        .when(items.length > capacity, el => el.child(button("overflow", `+${items.length - capacity}`, () => this.open("usage"), t)))
-        .child(div().flex_1())
-        .child(button("bar-refresh", "↻", cx => this.poll(cx, true), t).tooltip(tr(cfg, "refresh")))
-        .child(button("bar-settings", "⚙", () => this.open("settings"), t).tooltip(tr(cfg, "settings")));
+      return row().id("quota-manager-bar").size_full().px(6).items_center().justify_end()
+        .track_focus(this.focusHandle)
+        .on_key_down((e, cx) => this.key(e, cx))
+        .on_size_change((size, cx) => {
+          if (Math.abs(this.width - size.width) > 1) { this.width = size.width; cx.notify(); }
+        })
+        .child(quotaStrip({
+          items, cfg, t, now, width: this.width,
+          onUsage: () => this.open("usage"),
+          onSettings: () => this.open("settings"),
+          onRefresh: cx => this.poll(cx, true),
+        }));
     }
     const body = this.screen === "settings" ? this.settingsView(cfg, t)
       : this.screen === "history" ? this.historyView(cfg, t)

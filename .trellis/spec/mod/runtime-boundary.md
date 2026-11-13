@@ -12,11 +12,13 @@ Host calls belong in `main.js` tasks. `ui.js` receives plain data and a theme ob
 
 | Module | Imports |
 | --- | --- |
-| `main.js` | `gpui-kit` `View` and `div`; `herdr` host functions; relative `./` modules |
-| `ui.js` | `gpui-kit` `div`, `gpui-base` `h_flex` / `v_flex`, `./providers.js`, `./i18n.js`, `./model.js` |
+| `main.js` | `gpui-kit` `View`; `herdr` host functions; relative `./` modules |
+| `ui.js` | `gpui-kit` `div`, `image`, and `svg`; `gpui-base` `h_flex` / `v_flex`; `./providers.js`, `./i18n.js`, `./model.js` |
 | `config.js`, `command.js`, `model.js`, `store.js`, `providers.js`, `i18n.js` | relative Mod modules only |
 
 `herdr` symbols used today: `exec`, `props`, `theme`, `shared`, `setShared`, `spaces`, `window`, `knownAgents`, `openOverlay`, `closeOverlay`, `nextCommand`, `run`, `notify`.
+
+Provider tiles use `image("mods/quota-manager/icons/<id>.svg")`. Refresh and settings use `svg()`. `main.js` does not import `h_flex`; the pill is `quotaStrip` in `ui.js`. Paint does not call `window()`.
 
 ## View lifecycle
 
@@ -34,7 +36,7 @@ Async work uses `cx.spawn`, not timers from the DOM or Node. `poll` always recor
 cx.spawn(async cx => { await this.store.refresh(host, platform, { force, only }); cx.notify(); });
 ```
 
-`platform` is `window().platform` only for the local machine (`host === null`). A remote host uses `"unknown"` so `command.js` can try the direct binary, a login shell, and the Windows shim.
+`platform` is `window()?.platform` for the local machine (`host === null`). `herdr-app check` has no window, so `window()` is null there; a missing platform uses `"unknown"`. A remote host also uses `"unknown"` so `command.js` can try the direct binary, a login shell, and the Windows shim.
 
 ## Overlays and machines
 

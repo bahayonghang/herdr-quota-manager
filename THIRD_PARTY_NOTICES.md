@@ -9,6 +9,6 @@ Design references:
 - Lakris2407's native quota Mod: https://github.com/Lakris2407/herdr-mods/tree/main/quota
 - Orca's Usage roster / status-bar interaction: https://github.com/stablyai/orca
 
-quota-axi is an external, separately installed MIT-licensed dependency (reference version 0.1.69). Its distribution retains its own license and dependency notices. No provider-fetcher or React/Electron implementation from Orca is copied into this repository. Provider badges are plain text monograms, not copied logos.
+quota-axi is an external, separately installed MIT-licensed dependency (reference version 0.1.69). Its distribution retains its own license and dependency notices. No provider-fetcher or React/Electron implementation from Orca is copied into this repository. Provider badges are plain text monograms, not copied logos. Strip icons are the existing two-letter monograms on a colored tile, not vendor logos, and no trademark rights are granted.
 
 Product and provider names identify compatibility targets; they do not imply affiliation or endorsement. Consult each upstream repository's license before copying additional code, assets, or documentation into this project.

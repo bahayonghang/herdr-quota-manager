@@ -34,5 +34,6 @@ The native check loads and renders the initial state; it does not exercise every
 6. Change active machine while a popup is open: it must stay on its original machine. Reopen it to follow the new selection. Verify no remote failure invokes the local collector.
 7. Enable history/alerts deliberately, verify deduplication, and clear history on one machine without clearing another's.
 8. Verify updates retain settings and back up installed files. Confirm a failed native preflight leaves the existing installation intact.
+9. On the shown personal layout, keep a single quota block. `herdr-app shot` shows one trailing pill at the bottom of the window and no second quota row. Consent off does not start a collector. A narrow window shows `+N`. Repeat in both themes at your zoom level.
 
 After successful native acceptance, capture a real preview with `herdr-app shot preview.png`. No mock-generated image should be presented as a real native screenshot.

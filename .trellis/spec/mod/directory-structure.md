@@ -4,6 +4,7 @@ The Mod is one directory of plain ES modules. There is no `src/`, `components/`,
 
 ```
 mods/quota-manager/
+├── icons/          # monogram tiles, plus refresh and settings masks
 ├── mod.json        # place, size, focusable, overlay size
 ├── main.js         # QuotaManager View: lifecycle, screens, keyboard
 ├── ui.js           # GPUI node builders
@@ -32,6 +33,7 @@ Node-only code stays outside that directory:
 | --- | --- |
 | Poll interval, overlay open/close, keyboard, settings actions | `main.js` |
 | Chip, card, meter, button geometry | `ui.js` |
+| A provider tile or chrome mask | `mods/quota-manager/icons/` |
 | A visible string | `i18n.js`, both languages in one tuple |
 | A collector id or CLI detection key | `providers.js` |
 | A stored preference field | `config.js`, then the settings control in `main.js` |

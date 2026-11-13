@@ -6,7 +6,9 @@ import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { CONFIG_KEY, normalizeConfig } from "../mods/quota-manager/config.js";
 import { normalizeReport } from "../mods/quota-manager/model.js";
+import { IDS } from "../mods/quota-manager/providers.js";
 import { stateKey } from "../mods/quota-manager/store.js";
+import { tr } from "../mods/quota-manager/i18n.js";
 import { report, flush } from "./helpers.mjs";
 let folder, Mod, host;
 before(async () => {
@@ -90,6 +92,10 @@ test("detection and select-detected use the frozen popup machine and skip implic
 });
 test("compact bar exposes overflow and opens a machine-pinned popup", () => {
   const h = harness("bar"); h.mod.width = 220; host.state.spaces = [{ active: true, machine: "remote" }];
+  const tree = h.mod.render(h.cx);
+  find(tree, "overflow");
+  assert.equal(nodes(tree).some(n => n.attrs.id === "open"), false);
+  assert.equal(nodes(tree).some(n => n.attrs.id?.startsWith("chip-")), false);
   click(h, "overflow"); assert.equal(host.state.overlays[0].props.on, "remote"); h.mod.close();
 });
 test("remaining sort uses a valid numeric comparator", () => {
@@ -97,6 +103,151 @@ test("remaining sort uses a valid numeric comparator", () => {
   cache("codex", { windows: [{ id: "a", percentRemaining: 80 }] });
   cache("grok", { windows: [{ id: "a", percentRemaining: 10 }] });
   assert.equal(h.mod.items(h.mod.config())[0].id, "grok"); h.mod.close();
+});
+test("local init tolerates a null window and still uses a real window platform", async () => {
+  const providers = Object.fromEntries(["codex", "agy", "grok", "cursor"].map(id => [id, { query: id === "codex", show: true }]));
+  const launch = async (windowValue, spaces = []) => {
+    host.reset();
+    host.state.window = windowValue;
+    host.state.execCode = 127;
+    host.state.spaces = spaces;
+    host.setShared(CONFIG_KEY, normalizeConfig({ consent: true, interval: 60000, providers }));
+    const errors = [];
+    const cx = { notify() {}, stop_propagation() {}, focus_handle: () => ({ focus() {} }),
+      timer: { every() {} },
+      spawn: fn => { Promise.resolve().then(() => fn(cx)).catch(e => errors.push(e)); },
+    };
+    const mod = new Mod();
+    mod.init({}, cx);
+    mod.render(cx);
+    await flush(); await flush();
+    mod.close();
+    assert.deepEqual(errors, []);
+    return host.state.executions.map(call => [call[0], call[2].on]);
+  };
+  assert.deepEqual(await launch(null), [["quota-axi", null], ["sh", null], ["cmd.exe", null]]);
+  assert.deepEqual(await launch({ platform: "windows" }), [["quota-axi", null], ["cmd.exe", null]]);
+  assert.deepEqual(await launch({ platform: "windows" }, [{ active: true, machine: "remote" }]), [["quota-axi", "remote"], ["sh", "remote"], ["cmd.exe", "remote"]]);
+});
+function swatch(tree, id, text) {
+  const chip = find(tree, id);
+  const node = nodes(chip).find(n => (n.content ?? []).includes(text));
+  assert.ok(node, `${id} has no ${text}`);
+  return { chip, node };
+}
+function weekly(fields) {
+  return {
+    windows: [{ id: "w", label: "Weekly", kind: "weekly", resetsAt: new Date(Date.now() + 3 * 3600000).toISOString(), ...fields }],
+    state: { status: "fresh", stale: false },
+  };
+}
+test("strip digits stay displayPercent and pressure color is strip-only", async () => {
+  const cases = [
+    [{ consent: true }, { percentRemaining: 64 }, "64%", "theme.ansi2"],
+    [{ consent: true, percentage: "used" }, { percentUsed: 36 }, "36%", "theme.ansi2"],
+    [{ consent: true }, { percentRemaining: 20 }, "20%", "theme.ansi1"],
+    [{ consent: true, percentage: "used" }, { percentUsed: 50 }, "50%", "theme.ansi3"],
+    [{ consent: true }, { percentRemaining: 50 }, "50%", "theme.ansi3"],
+  ];
+  for (const [config, fields, text, color] of cases) {
+    const h = harness("bar", config);
+    const lanes = cache("codex", weekly(fields));
+    const face = swatch(h.mod.render(h.cx), `chip-codex-${lanes[0].key}`, text);
+    assert.equal(face.node.attrs.text_color, color, text);
+    h.mod.close();
+  }
+  const h = harness("bar", { consent: true });
+  const lanes = cache("codex", weekly({ percentRemaining: 40 }));
+  const id = `chip-codex-${lanes[0].key}`;
+  const tree = h.mod.render(h.cx);
+  assert.equal(swatch(tree, id, "40%").node.attrs.text_color, "theme.ansi3");
+  find(tree, id).events.on_click({}, h.cx);
+  assert.equal(host.state.overlays[0].props.view, "usage");
+  h.mod.screen = "usage";
+  const card = find(h.mod.render(h.cx), `provider-codex-${lanes[0].key}`);
+  const cardPercent = nodes(card).find(n => (n.content ?? []).includes("40%"));
+  assert.equal(cardPercent.attrs.text_color, "theme.ansi2");
+  h.mod.close();
+  await flush();
+});
+test("consent off keeps cached digits muted and an empty headline dim", () => {
+  const cached = harness("bar", { consent: false });
+  const lanes = cache("codex", weekly({ percentRemaining: 64 }));
+  const cachedFace = swatch(cached.mod.render(cached.cx), `chip-codex-${lanes[0].key}`, "64%");
+  assert.equal(cachedFace.node.attrs.text_color, "theme.muted");
+  assert.equal(cachedFace.chip.attrs.accessibility_label.includes(" !"), false);
+  cached.mod.close();
+  const empty = harness("bar", { consent: false });
+  const face = swatch(empty.mod.render(empty.cx), "chip-codex-empty", "—");
+  assert.equal(face.node.attrs.text_color, "theme.dim");
+  assert.equal(face.chip.attrs.accessibility_label.includes(" !"), false);
+  empty.mod.close();
+});
+test("share-only strip uses the shared key instead of a passed reset", () => {
+  const h = harness("bar", { consent: true, providers: { codex: { query: true, show: true } } });
+  const lanes = cache("codex", {
+    plan: "",
+    windows: [{ id: "s", label: "Pool", kind: "weekly", shareOf: "team", percentUsed: 40, resetsAt: "2000-01-01T00:00:00Z" }],
+    state: { status: "fresh", stale: false },
+  });
+  const face = swatch(h.mod.render(h.cx), `chip-codex-${lanes[0].key}`, "—");
+  assert.equal(face.node.attrs.text_color, "theme.dim");
+  assert.match(face.chip.attrs.accessibility_label, /share used/);
+  assert.equal(face.chip.attrs.accessibility_label.includes("Reset due"), false);
+  h.mod.close();
+});
+test("an empty show list renders the short chooser without overflow", () => {
+  const providers = Object.fromEntries(IDS.map(id => [id, { query: false, show: false }]));
+  const h = harness("bar", { providers });
+  const tree = h.mod.render(h.cx);
+  const open = find(tree, "open");
+  assert.ok(open.content.includes(tr({ language: "en" }, "stripEmpty")));
+  find(tree, "bar-refresh");
+  find(tree, "bar-settings");
+  assert.equal(nodes(tree).some(n => n.attrs.id === "overflow"), false);
+  h.mod.close();
+});
+test("stripEmpty is translated in both languages", () => {
+  assert.equal(tr({ language: "en" }, "stripEmpty"), "Choose providers");
+  assert.equal(tr({ language: "zh" }, "stripEmpty"), "选择服务");
+});
+test("default chips and chrome use local icon files", () => {
+  const h = harness("bar");
+  const tree = h.mod.render(h.cx);
+  const bar = find(tree, "quota-manager-bar");
+  assert.ok("justify_end" in bar.attrs);
+  assert.equal("bg" in bar.attrs, false);
+  assert.equal("border_t" in bar.attrs, false);
+  const strip = find(tree, "quota-strip");
+  assert.ok("flex_none" in strip.attrs);
+  assert.equal(strip.attrs.h, 24);
+  for (const id of ["codex", "agy", "grok", "cursor"]) {
+    const chip = find(tree, `chip-${id}-empty`);
+    const images = nodes(chip).filter(n => n.kind === "image");
+    assert.equal(images.length, 1);
+    assert.equal(images[0].attrs.path, `mods/quota-manager/icons/${id}.svg`);
+    assert.equal(images[0].attrs.w, 14);
+    assert.equal(images[0].attrs.h, 14);
+  }
+  h.mod.screen = "usage";
+  const card = find(h.mod.render(h.cx), "provider-codex-empty");
+  const cardImages = nodes(card).filter(n => n.kind === "image");
+  assert.equal(cardImages.length, 1);
+  assert.equal(cardImages[0].attrs.path, "mods/quota-manager/icons/codex.svg");
+  assert.equal(nodes(card).some(n => (n.content ?? []).includes("CX")), false);
+  for (const [id, file, label] of [["bar-refresh", "refresh.svg", "Refresh"], ["bar-settings", "settings.svg", "Settings"]]) {
+    const control = find(tree, id);
+    const icon = nodes(control).find(n => n.kind === "svg");
+    assert.equal(icon.attrs.path, `mods/quota-manager/icons/${file}`);
+    assert.equal(icon.attrs.size, 13);
+    assert.equal(icon.attrs.text_color, "theme.muted");
+    assert.equal(control.attrs.tooltip, label);
+    assert.equal(control.attrs.accessibility_label, label);
+    assert.equal(control.attrs.w, 13);
+    assert.equal(control.attrs.px, 0);
+  }
+  assert.equal(nodes(tree).some(n => n.attrs.id === "open"), false);
+  h.mod.close();
 });
 test("popup close and Escape use the actual overlay id", () => {
   const h = harness("usage"); click(h, "close"); assert.equal(host.state.closed, "test");

@@ -1,0 +1,13 @@
+{"file": ".trellis/tasks/11-12-bottom-right-quota-strip/research/design-c6579289.md", "reason": "Check the implementation against the approved design"}
+{"file": ".trellis/spec/mod/index.md", "reason": "Quality check list for the mod"}
+{"file": ".trellis/spec/mod/ui.md", "reason": "UI contracts the strip must keep"}
+{"file": ".trellis/spec/mod/runtime-boundary.md", "reason": "Import and timer boundary"}
+{"file": ".trellis/spec/mod/directory-structure.md", "reason": "File ownership"}
+{"file": ".trellis/spec/mod/data-contracts.md", "reason": "Percent and consent must not change"}
+{"file": ".trellis/spec/tooling/installer.md", "reason": "No layout writes in the installer"}
+{"file": "docs/ARCHITECTURE.md", "reason": "Architecture contracts"}
+{"file": "docs/VALIDATION.md", "reason": "Live acceptance steps"}
+{"file": "SECURITY.md", "reason": "Privacy constraints"}
+{"file": ".trellis/tasks/11-12-bottom-right-quota-strip/prd.md", "reason": "Acceptance criteria to verify"}
+{"file": ".trellis/tasks/11-12-bottom-right-quota-strip/design.md", "reason": "Boundaries the diff must stay inside"}
+{"file": ".trellis/tasks/11-12-bottom-right-quota-strip/implement.md", "reason": "Checklist and validation commands"}

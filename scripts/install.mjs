@@ -9,8 +9,11 @@ const marker = ".quota-manager-install.json";
 const exists = async p => { try { return await lstat(p); } catch (e) { if (e.code === "ENOENT") return null; throw e; } };
 export function nativeCheck(path) {
   const result = spawnSync("herdr-app", ["check", path], { encoding: "utf8", timeout: 30000, windowsHide: true });
+  const detail = `${result.stderr ?? ""}${result.stdout ?? ""}`.trim();
+  if (result.error?.code === "ENOENT") throw new Error(
+    "Native check failed. Install herdr-app on PATH and retry. No installed mod was changed.");
   if (result.error || result.status !== 0) throw new Error(
-    `Native check failed. Install herdr-app on PATH and retry. No installed mod was changed.\n${result.stderr ?? result.error?.message ?? ""}`);
+    `Native check failed. No installed mod was changed.${detail ? `\n${detail}` : result.error?.message ? `\n${result.error.message}` : ""}`);
 }
 export async function installMod({ appHome, source = join(root, "mods", "quota-manager"), check = nativeCheck, skipCheck = false }) {
   const home = resolve(appHome), target = join(home, "mods", "quota-manager");

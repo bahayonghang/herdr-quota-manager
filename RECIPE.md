@@ -11,7 +11,7 @@ A native bottom-bar Mod for choosing which AI providers to query, instead of que
 5. Open Herdr and inspect the live status bar, usage popup, and settings. Verify `herdr-app status` has no Mod errors.
 6. Let the user select providers and click Start. Do not silently approve system credential-store access, log in, enable Muse, enable alerts, or change a provider's CLI configuration.
 
-The Mod's `mod.json` requests a 30px bottom block. For a personal custom layout, add a block whose content is `{ "mod": "quota-manager" }`. Clone a shipped layout first. Never replace the complete layout or keys file to install this Mod.
+The Mod's `mod.json` requests a 30px bottom block. `place: "bottom"` is the only automatic slot, and it lasts only on a personal layout. A first sight on shipped `main`, `terminals`, or `win98` does not leave a dock after the next start, and Herdr will not dock again. Clone a shipped layout before any structural edit. Do not paste a `quota-manager` block, and do not add a second one when the bottom dock is already present. A hidden block still polls. Do not overwrite a user's layout.
 
 ## Files
 

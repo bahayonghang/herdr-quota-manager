@@ -17,6 +17,7 @@ const copy = {
   credentials_expired: ["Credentials expired. Sign in through the provider CLI.", "凭据已过期，请通过对应 CLI 重新登录。"],
   inference_opt_in_required: ["No zero-inference quota source; no inference was requested.", "没有免推理的额度来源；本 Mod 不触发推理。"],
   empty: ["No providers displayed. Choose them in Settings.", "未显示任何服务，请在设置中选择。"],
+  stripEmpty: ["Choose providers", "选择服务"],
   filtered: ["No measurable selected windows", "所选周期没有可用百分比"],
   resetDue: ["Reset due — refresh to verify", "已到重置时间，需刷新确认"],
   unknown: ["Unknown", "未知"], shared: ["share used", "已用份额"],
