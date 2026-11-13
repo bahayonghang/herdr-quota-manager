@@ -76,3 +76,37 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 3: 修复本机额度查询并完成原生验收
+<!-- trellis-session: v=2 fp=65033164acf0664f -->
+
+**Date**: 2026-11-13
+**Task**: 修复本机额度查询并完成原生验收
+**Branch**: `bottom-right-quota-strip`
+
+### Summary
+
+修复原生 UTF-8 凭据与缓存读取、Antigravity daemon 和 Grok JSON billing 采集，纠正显式本机范围切换与被阻止刷新引导；已配置并安装，完成三个服务的本机真实额度验收，按用户要求提交和归档。
+
+### Main Changes
+
+- 保留原生 UTF-8 文本并使用标准 JWT 解码，修复 Node 模拟未覆盖的 Buffer 兼容问题
+- 本机零子进程查询 Antigravity daemon 和 Grok JSON billing，增加截止时间、候选上限及迟到响应保护
+- 修复弹窗显式范围切换和刷新引导，更新规范、文档和归档验收记录
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `59cd333497b659985c51b7701c18b65ac7b9d7ed` | fix: 恢复本机额度采集并修正刷新与机器范围 |
+
+### Testing
+
+- [OK] just ci：114/114 通过；npm run check:herdr 与安装器原生检查通过
+- [OK] 实际 Herdr 本机刷新显示 Codex 97%、Antigravity 69%、Grok 50%；84 文件安装一致性检查通过
+- [OK] 归档后上下文清单校验与 8 个隔离刷新复现场景通过
+
+### Status
+
+[OK] **Completed**
