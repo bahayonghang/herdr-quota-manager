@@ -29,7 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
-| 1 | 2026-11-12 | 填写 Quota Manager 开发规范 | `eb62c1a746cadc5f79784081ffd72e3ab149a074`, `0b7c9257d21154fbc2dd1e538b73d42126fc97c6` | `main` |
+| 1 | 2026-11-12 | 填写 Quota Manager 开发规范 | `09c1c55a48cad19f6f95c3bf35298a0fb6a68fa6`, `eb62c1a746cadc5f79784081ffd72e3ab149a074` | `main` |
 <!-- @@@/auto:session-history -->
 
 ---

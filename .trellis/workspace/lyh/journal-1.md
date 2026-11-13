@@ -8,7 +8,7 @@
 
 
 ## Session 1: 填写 Quota Manager 开发规范
-<!-- trellis-session: v=2 fp=16e54faad0a6b614 -->
+<!-- trellis-session: v=2 fp=4f131215ad732fda -->
 
 **Date**: 2026-11-12
 **Task**: 填写 Quota Manager 开发规范
@@ -27,8 +27,8 @@
 
 | Hash | Message |
 |------|---------|
+| `09c1c55a48cad19f6f95c3bf35298a0fb6a68fa6` | chore: 引入 Trellis 工作流脚手架 |
 | `eb62c1a746cadc5f79784081ffd72e3ab149a074` | docs: 补齐 Quota Manager 开发规范 |
-| `0b7c9257d21154fbc2dd1e538b73d42126fc97c6` | chore(task): archive 00-bootstrap-guidelines |
 
 ### Testing
 
