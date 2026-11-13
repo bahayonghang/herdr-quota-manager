@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 1
-- **Last Active**: 2026-11-12
+- **Total Sessions**: 2
+- **Last Active**: 2026-11-13
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~39 | Active |
+| `journal-1.md` | ~78 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 2 | 2026-11-13 | 状态栏额度芯片整合与内置 quota-axi 本机直调 | `28a24b85287506bd9dc61e864d6b764d508b2974`, `2b77953b2c20b4953536a31b6ea8faf6031a6d38`, `ea055fc6bfe23245aaef0d7731e3ecac5f0adc4b`, `0d93aaea275f8071cb347826ec0fec74d3d8c791` | `bottom-right-quota-strip` |
 | 1 | 2026-11-12 | 填写 Quota Manager 开发规范 | `09c1c55a48cad19f6f95c3bf35298a0fb6a68fa6`, `eb62c1a746cadc5f79784081ffd72e3ab149a074` | `main` |
 <!-- @@@/auto:session-history -->
 
