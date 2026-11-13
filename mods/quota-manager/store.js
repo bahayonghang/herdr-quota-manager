@@ -5,8 +5,8 @@ import { validWindow, recordHistory } from "./model.js";
 export function stateKey(kind, host, id) { return `quota-manager.v1.${kind}:${JSON.stringify([host ?? null, id])}`; }
 const safeErrors = ["cli_missing", "cli_failed", "invalid_report", "host_unavailable"];
 export class QuotaStore {
-  constructor({ read, write, exec, now = Date.now, random = Math.random, alert = () => {} }) {
-    Object.assign(this, { read, write, exec, now, random, alert });
+  constructor({ read, write, exec, now = Date.now, random = Math.random, alert = () => {}, local = null }) {
+    Object.assign(this, { read, write, exec, now, random, alert, local });
     this.closed = false;
   }
   config() { return normalizeConfig(this.read(CONFIG_KEY)); }
@@ -37,7 +37,7 @@ export class QuotaStore {
     // Shared synchronous state serializes admission across all copies in this app window.
     this.write(lockKey, { token, until: start + 150000 });
     try {
-      const lanes = await fetchQuota(this.exec, id, { on: host, platform, force, now: this.now });
+      const lanes = await fetchQuota(this.exec, id, { on: host, platform, force, now: this.now, local: host == null ? this.local : null });
       if (!this.current(cfg, id, lockKey, token)) return;
       const now = this.now(), fresh = lanes.some(l => l.status === "fresh" && !l.stale);
       const failures = fresh ? 0 : (old?.failures ?? 0) + 1;

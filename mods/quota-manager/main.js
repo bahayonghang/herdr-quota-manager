@@ -1,11 +1,11 @@
 import { View } from "gpui-kit";
-import { exec, props, theme, shared, setShared, spaces, window, knownAgents, openOverlay, closeOverlay, nextCommand, run, notify } from "herdr";
+import { exec, props, theme, shared, setShared, spaces, agents, keys, window, knownAgents, openOverlay, closeOverlay, nextCommand, run, notify, home, appHome } from "herdr";
 import { IDS, provider, detectedProviders } from "./providers.js";
 import { CONFIG_KEY, INTERVALS, KINDS, normalizeConfig, changeConfig, moveProvider, machineFor } from "./config.js";
 import { headline } from "./model.js";
 import { QuotaStore, stateKey } from "./store.js";
 import { tr } from "./i18n.js";
-import { button, line, text, note, row, column, choice, toggle, providerCard, quotaStrip } from "./ui.js";
+import { button, line, text, note, row, column, choice, toggle, providerCard, quotaBar } from "./ui.js";
 
 export default class QuotaManager extends View {
   init(_props, cx) {
@@ -15,6 +15,7 @@ export default class QuotaManager extends View {
     this.detected = null;
     this.focusHandle = cx.focus_handle();
     this.store = new QuotaStore({ read: shared, write: setShared, exec,
+      local: { home: () => home(), appHome: () => appHome() },
       alert: e => notify({ title: `${provider(e.provider).name} · ${Math.round(e.remaining)}%`,
         body: `${e.host ?? tr(this.config(), "local")} · ${e.label}`, level: "warning", timeout: 6000 }),
     });
@@ -88,6 +89,14 @@ export default class QuotaManager extends View {
     } else return;
     cx.stop_propagation(); cx.notify();
   }
+  hint() {
+    const mac = window()?.platform === "macos";
+    const mod = { cmd: mac ? "⌘" : "Ctrl+", ctrl: mac ? "⌃" : "Ctrl+", shift: mac ? "⇧" : "Shift+", alt: mac ? "⌥" : "Alt+", option: mac ? "⌥" : "Alt+" };
+    const binding = (keys() ?? []).find(k => k.section === "global" && k.action === "app.palette");
+    const parts = binding && binding.keys.endsWith("--") ? [...binding.keys.slice(0, -2).split("-"), "-"] : binding?.keys.split("-");
+    const key = parts && parts.map(part => mod[part.toLowerCase()] ?? part.toUpperCase()).join("");
+    return key ? `${key}  commands` : "commands";
+  }
   items(cfg) {
     const host = this.host(), now = Date.now(), items = [];
     for (const id of cfg.order.filter(id => cfg.providers[id].show)) {
@@ -109,18 +118,19 @@ export default class QuotaManager extends View {
     if (!this.store) return text("Quota Manager", t); // Initial headless description can precede init.
     const items = this.items(cfg);
     if (this.screen === "bar") {
-      return row().id("quota-manager-bar").size_full().px(6).items_center().justify_end()
-        .track_focus(this.focusHandle)
-        .on_key_down((e, cx) => this.key(e, cx))
-        .on_size_change((size, cx) => {
+      const space = (spaces() ?? []).find(item => item.active);
+      const list = agents() ?? [];
+      return quotaBar({
+        items, cfg, t, now, width: this.width, space, hint: this.hint(),
+        agentCount: list.length, needs: list.filter(agent => agent.status === "blocked").length,
+        onUsage: () => this.open("usage"),
+        onSettings: () => this.open("settings"),
+        onRefresh: cx => this.poll(cx, true),
+        onPalette: () => run("app.palette"),
+        onWidth: (size, cx) => {
           if (Math.abs(this.width - size.width) > 1) { this.width = size.width; cx.notify(); }
-        })
-        .child(quotaStrip({
-          items, cfg, t, now, width: this.width,
-          onUsage: () => this.open("usage"),
-          onSettings: () => this.open("settings"),
-          onRefresh: cx => this.poll(cx, true),
-        }));
+        },
+      }).track_focus(this.focusHandle).on_key_down((e, cx) => this.key(e, cx));
     }
     const body = this.screen === "settings" ? this.settingsView(cfg, t)
       : this.screen === "history" ? this.historyView(cfg, t)
@@ -212,7 +222,6 @@ export default class QuotaManager extends View {
   }
   helpView(cfg, t) {
     return column().gap(10).child(note(tr(cfg, "helpText"), t))
-      .child(text("npm install -g quota-axi@0.1.69", t, false))
       .child(text("quota-axi --provider codex --json --no-credential-refresh", t, false))
       .child(note(tr(cfg, "privacy"), t))
       .child(note(tr(cfg, "keychain_access_required"), t))

@@ -7,7 +7,7 @@ export const report = (id = "codex", extra = {}, now = NOW) => ({
     { id: "week", label: "Weekly", kind: "weekly", percentRemaining: 25, resetsAt: new Date(now + 86400000).toISOString() },
   ], state: { status: "fresh", stale: false }, ...extra }],
 });
-export function setup({ config = {}, execute, alert } = {}) {
+export function setup({ config = {}, execute, localQuery, alert } = {}) {
   const data = new Map(), calls = [];
   let clock = NOW;
   const all = normalizeConfig();
@@ -16,14 +16,23 @@ export function setup({ config = {}, execute, alert } = {}) {
   const read = key => data.get(key);
   const write = (key, value) => data.set(key, value);
   const exec = async (command, args, options) => {
-    calls.push({ command, args, options });
+    calls.push({ kind: "exec", command, args, options });
     if (execute) return execute(command, args, options);
     const id = args[args.indexOf("--provider") + 1];
     return { code: 0, stdout: JSON.stringify(report(id, {}, clock)), stderr: "" };
   };
+  const local = {
+    query: async (id, options) => {
+      calls.push({ kind: "local", id, options });
+      if (localQuery) return localQuery(id, options);
+      return JSON.stringify(report(id, {}, clock));
+    },
+    home: () => "/tmp/test-home",
+    appHome: () => "/tmp/test-app-home",
+  };
   const now = () => clock;
-  const store = new QuotaStore({ read, write, exec, now, alert });
-  return { store, data, read, write, exec, now, calls, advance: ms => { clock += ms; } };
+  const store = new QuotaStore({ read, write, exec, local, now, alert });
+  return { store, data, read, write, exec, local, now, calls, advance: ms => { clock += ms; } };
 }
 export function deferred() {
   let resolve, reject;

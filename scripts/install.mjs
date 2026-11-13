@@ -1,9 +1,11 @@
 import { cp, mkdir, rename, rm, lstat, writeFile, readFile } from "node:fs/promises";
-import { resolve, join, dirname } from "node:path";
+import { basename, resolve, join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
+import { buildVendor, COLLECTOR_COMMIT, COLLECTOR_VERSION } from "./build-vendor.mjs";
+export { buildVendor, COLLECTOR_COMMIT, COLLECTOR_VERSION };
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const marker = ".quota-manager-install.json";
 const exists = async p => { try { return await lstat(p); } catch (e) { if (e.code === "ENOENT") return null; throw e; } };
@@ -51,6 +53,32 @@ export async function uninstallMod(appHome) {
   await rename(target, backup);
   return backup;
 }
+const collectorMarkerName = ".quota-manager-collector.json";
+export function installPaths(appHome) {
+  const home = resolve(appHome);
+  return {
+    mod: join(home, "mods", "quota-manager"),
+    collector: join(home, "collectors", "quota-manager"),
+    legacyCollector: join(home, "collectors", "quota-axi"),
+  };
+}
+export async function retireOwnedCollectors(appHome) {
+  const home = resolve(appHome), paths = installPaths(home), retired = [];
+  for (const target of [paths.collector, paths.legacyCollector]) {
+    const stat = await exists(target);
+    if (!stat || stat.isSymbolicLink() || !stat.isDirectory()) continue;
+    let info = null;
+    try { info = JSON.parse(await readFile(join(target, collectorMarkerName), "utf8")); }
+    catch { info = null; }
+    if (info?.project !== "herdr-quota-manager") continue;
+    const parent = join(home, ".quota-manager-backups");
+    await mkdir(parent, { recursive: true });
+    const backup = join(parent, `retired-collector-${basename(target)}-${Date.now()}-${randomUUID()}`);
+    await rename(target, backup);
+    retired.push(backup);
+  }
+  return retired;
+}
 async function main() {
   const args = process.argv.slice(2);
   let appHome = process.env.HERDR_APP_HOME || join(homedir(), ".config", "herdr-app");
@@ -62,19 +90,30 @@ async function main() {
     else if (args[i] === "--uninstall") uninstall = true;
     else throw new Error(`Unknown or incomplete option: ${args[i]}`);
   }
-  if (dry) { console.log(`${uninstall ? "Uninstall" : "Install"}: ${resolve(appHome, "mods", "quota-manager")}`); return; }
+  const paths = installPaths(appHome);
+  if (dry) {
+    console.log(`${uninstall ? "Uninstall" : "Install"}: ${paths.mod}`);
+    return;
+  }
   if (uninstall) {
     console.log("Moved mod to backup:", await uninstallMod(appHome) ?? "not installed");
+    for (const backup of await retireOwnedCollectors(appHome)) {
+      console.log("Moved retired collector directory to backup:", backup);
+    }
     console.log("Remove its block from personal layouts if still present. Shared preferences and history were retained.");
     return;
   }
   const [major, minor] = process.versions.node.split(".").map(Number);
-  if (major < 22 || (major === 22 && minor < 19)) throw new Error("Node.js 22.19+ is required by quota-axi");
+  if (major < 22 || (major === 22 && minor < 19)) throw new Error("Node.js 22.19+ is required to build vendored quota-axi");
+  await buildVendor({ repoRoot: root });
   const result = await installMod({ appHome, skipCheck });
+  const retired = await retireOwnedCollectors(appHome);
   console.log(`Installed: ${result.target}`);
   if (result.backup) console.log(`Previous mod backed up: ${result.backup}`);
   console.log(result.nativeChecked ? "Native initial-render check passed. Verify the live UI next." : "WARNING: native validation was explicitly skipped; this is not a verified installation.");
-  console.log("Install the collector separately: npm install -g quota-axi@0.1.69");
+  for (const backup of retired) {
+    console.log(`Moved retired collector directory to backup: ${backup}`);
+  }
   console.log("Open Quota Manager settings, choose providers, and click Start. Existing layouts and keybindings were not rewritten.");
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

@@ -68,7 +68,7 @@ export function providerCard(item, cfg, t, now, refresh) {
   const title = `${p.name}${item.multiple ? ` · ${tr(cfg, "account")} ${lane.key.slice(-4)}` : ""}`;
   const card = column().id(`provider-${id}-${lane?.key ?? "empty"}`).p(10).rounded(7).bg(t.raised)
     .child(row().justify_between().child(row()
-      .child(providerIcon(id))
+      .child(providerIcon(id, t.foreground))
       .child(column().gap(2).child(text(title, t, false).font_semibold())
         .child(text(lane?.plan ?? "", t).text_size(10))))
       .child(button(`refresh-${id}-${lane?.key ?? "empty"}`, "↻", cx => refresh(id, cx), t)));
@@ -126,7 +126,7 @@ export function stripBudget(item, cfg, now, tier) {
 }
 function fitStrip(items, width, cfg, now) {
   const gap = 10;
-  const shell = 12 + 16; // row px(6)*2 + pill px(8)*2
+  const shell = 0; // The chips sit in the status-bar slot, which already has the row padding.
   const chrome = 13 + gap + 13; // refresh, the gap before settings, settings
   const overflowW = 36;
   const base = shell + chrome;
@@ -146,8 +146,24 @@ function fitStrip(items, width, cfg, now) {
   }
   return { tier: 2, capacity };
 }
-function providerIcon(id) {
-  return image(`mods/quota-manager/icons/${id}.svg`).w(14).h(14).flex_none();
+// Herdr's own program icons. image() keeps a colored mark; svg() tints a one-color glyph.
+// Paths stay in the Herdr home. This mod does not copy the artwork.
+const BRAND = {
+  codex: ["icons/codex.svg", false],
+  agy: ["icons/antigravity.svg", false],
+  grok: ["icons/grok.svg", true],
+  cursor: ["icons/cursor.svg", true],
+  claude: ["icons/claude.svg", false],
+  copilot: ["icons/copilot.svg", true],
+  kimi: ["icons/kimi.svg", false],
+  "opencode-go": ["icons/opencode.svg", true],
+  commandcode: ["icons/command-code.svg", true],
+};
+function providerIcon(id, color) {
+  const brand = BRAND[id];
+  if (!brand) return image(`mods/quota-manager/icons/${id}.svg`).w(14).h(14).flex_none();
+  const [path, tint] = brand;
+  return tint ? svg(path).size(14).flex_none().text_color(color) : image(path).w(14).h(14).flex_none();
 }
 function refreshIcon(t) {
   return svg("mods/quota-manager/icons/refresh.svg").size(13).flex_none().text_color(t.muted);
@@ -174,7 +190,7 @@ export function stripChip(item, cfg, t, now, open, tier) {
     .role("button").accessibility_label(tip.replaceAll("\n", ", ")).tooltip(tip)
     .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
     .on_click((_e, cx) => { cx.stop_propagation(); open(cx); })
-    .child(div().w(14).h(14).flex_none().overflow_hidden().items_center().justify_center().child(providerIcon(item.id)))
+    .child(div().w(14).h(14).flex_none().overflow_hidden().items_center().justify_center().child(providerIcon(item.id, t.foreground)))
     .child(div().text_size(11).text_color(t.foreground).whitespace_nowrap().child(p.name))
     .when(tier < 2 && item.lane?.plan, el => el.child(div().text_size(10).px(4).rounded(4).bg(t.selected).text_color(t.muted).max_w(64).truncate().child(item.lane.plan)))
     .child(div().text_size(11).font_semibold().whitespace_nowrap().text_color(face.color).child(face.text))
@@ -184,11 +200,30 @@ export function quotaStrip({ items, cfg, t, now, width, onUsage, onSettings, onR
   const fit = fitStrip(items, width, cfg, now);
   const shown = items.slice(0, fit.capacity);
   const overflowLabel = `+${items.length - fit.capacity}`;
-  return h_flex().id("quota-strip").flex_none().h(24).px(8).gap(10).items_center()
-    .rounded(8).bg(t.chrome).border(1).border_color(t.border).overflow_hidden()
+  return h_flex().id("quota-strip").flex_none().gap(10).items_center().overflow_hidden()
     .when(items.length === 0, el => el.child(flatButton("open", tr(cfg, "stripEmpty"), onSettings, t, tr(cfg, "stripEmpty"))))
     .children(shown.map(item => stripChip(item, cfg, t, now, onUsage, fit.tier)))
     .when(items.length > fit.capacity, el => el.child(flatButton("overflow", overflowLabel, onUsage, t, overflowLabel)))
     .child(flatButton("bar-refresh", refreshIcon(t), onRefresh, t, tr(cfg, "refresh"), 13))
     .child(flatButton("bar-settings", settingsIcon(t), onSettings, t, tr(cfg, "settings"), 13));
+}
+export function quotaBar({ items, cfg, t, now, width, space, agentCount, needs, hint, onUsage, onSettings, onRefresh, onPalette, onWidth }) {
+  const label = (id, icon, value) => h_flex().id(id).gap(6).items_center()
+    .child(svg(`mods/workspace-chrome/${icon}.svg`).size(13).flex_none().text_color(t.muted))
+    .child(div().child(value));
+  return h_flex().id("quota-manager-bar").size_full().px(14).gap(16).items_center()
+    .bg(t.chrome).border_t(1).border_color(t.border).text_size(11.8).text_color(t.muted)
+    .child(label("machine-label", space?.machine ? "server" : "monitor", space?.machine ?? "This computer"))
+    .when(Boolean(space?.branch), el => el.child(label("branch-label", "branch", space.branch)))
+    .child(h_flex().id("agent-count").gap(6).items_center()
+      .child(div().size(6).rounded(3).bg(t.dim))
+      .child(`${agentCount} agents`)
+      .when(needs > 0, el => el.child(div().id("needs-you").text_color(t.blocked).child(`· ${needs} needs you`))))
+    .child(h_flex().id("quota-slot").flex_1().items_center().justify_end().overflow_hidden()
+      .on_size_change((size, cx) => onWidth(size, cx))
+      .child(quotaStrip({ items, cfg, t, now, width, onUsage, onSettings, onRefresh })))
+    .child(div().id("palette").flex_none().cursor_pointer().text_color(t.dim)
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+      .on_click((_e, cx) => { cx.stop_propagation(); onPalette(); })
+      .child(hint));
 }

@@ -27,6 +27,8 @@ before(async () => {
 after(async () => { if (folder) await rm(folder, { recursive: true, force: true }); });
 function harness(view = "bar", config = {}) {
   host.reset(); host.state.props = view === "bar" ? {} : { view, overlay: "test", on: null };
+  host.state.home = join(folder, "empty-home");
+  host.state.appHome = join(folder, "app-home");
   host.setShared(CONFIG_KEY, normalizeConfig(config));
   const errors = [], timers = [];
   const cx = { notify() {}, stop_propagation() {}, focus_handle: () => ({ focus() {} }),
@@ -35,6 +37,12 @@ function harness(view = "bar", config = {}) {
   };
   const mod = new Mod(); mod.init({}, cx);
   return { mod, cx, errors, timers };
+}
+async function settle(mod, hostName = null, ids = ["agy", "codex", "cursor", "grok"]) {
+  for (let i = 0; i < 50; i++) {
+    await flush();
+    if (!ids.some(id => mod.store.busy(hostName, id))) break;
+  }
 }
 function nodes(node) { return !node || typeof node !== "object" ? [] : [node, ...(node.content ?? []).flatMap(nodes)]; }
 function find(tree, id) {
@@ -74,10 +82,13 @@ test("language and detailed-mode controls persist", () => {
   click(h, "tab-usage"); click(h, "mode-detailed"); assert.equal(h.mod.config().mode, "detailed"); h.mod.close();
 });
 test("explicit Start begins selected queries, not every catalog provider", async () => {
-  const h = harness("settings", { interval: 0 }); click(h, "consent"); await flush(); await flush();
+  const h = harness("settings", { interval: 0 }); click(h, "consent"); await settle(h.mod, null, ["agy", "codex", "cursor", "grok"]);
   assert.equal(h.mod.config().consent, true);
-  assert.equal(host.state.executions.length, 4);
-  assert.deepEqual(host.state.executions.map(c => c[1][2]).sort(), ["agy", "codex", "cursor", "grok"]); h.mod.close();
+  assert.equal(host.state.executions.length, 0);
+  for (const id of ["agy", "codex", "cursor", "grok"]) assert.ok(host.shared(stateKey("cache", null, id)));
+  for (const id of ["claude", "muse"]) assert.equal(host.shared(stateKey("cache", null, id)), undefined);
+  assert.deepEqual(h.errors, []);
+  h.mod.close();
 });
 test("Muse opt-in requires confirmation before enabling", () => {
   const h = harness("settings"); click(h, "query-muse"); assert.equal(h.mod.config().providers.muse.query, false);
@@ -95,7 +106,7 @@ test("compact bar exposes overflow and opens a machine-pinned popup", () => {
   const tree = h.mod.render(h.cx);
   find(tree, "overflow");
   assert.equal(nodes(tree).some(n => n.attrs.id === "open"), false);
-  assert.equal(nodes(tree).some(n => n.attrs.id?.startsWith("chip-")), false);
+  assert.equal(nodes(tree).some(n => n.attrs.id === "chip-cursor-empty"), false);
   click(h, "overflow"); assert.equal(host.state.overlays[0].props.on, "remote"); h.mod.close();
 });
 test("remaining sort uses a valid numeric comparator", () => {
@@ -108,6 +119,8 @@ test("local init tolerates a null window and still uses a real window platform",
   const providers = Object.fromEntries(["codex", "agy", "grok", "cursor"].map(id => [id, { query: id === "codex", show: true }]));
   const launch = async (windowValue, spaces = []) => {
     host.reset();
+    host.state.home = join(folder, "empty-home");
+    host.state.appHome = join(folder, "app-home");
     host.state.window = windowValue;
     host.state.execCode = 127;
     host.state.spaces = spaces;
@@ -120,14 +133,19 @@ test("local init tolerates a null window and still uses a real window platform",
     const mod = new Mod();
     mod.init({}, cx);
     mod.render(cx);
-    await flush(); await flush();
+    const machine = spaces.find(s => s.active)?.machine ?? null;
+    await settle(mod, machine, ["codex"]);
+    const cached = Boolean(host.shared(stateKey("cache", machine, "codex")));
     mod.close();
     assert.deepEqual(errors, []);
-    return host.state.executions.map(call => [call[0], call[2].on]);
+    return { calls: host.state.executions.map(call => [call[0], call[2].on]), cached };
   };
-  assert.deepEqual(await launch(null), [["quota-axi", null], ["sh", null], ["cmd.exe", null]]);
-  assert.deepEqual(await launch({ platform: "windows" }), [["quota-axi", null], ["cmd.exe", null]]);
-  assert.deepEqual(await launch({ platform: "windows" }, [{ active: true, machine: "remote" }]), [["quota-axi", "remote"], ["sh", "remote"], ["cmd.exe", "remote"]]);
+  assert.deepEqual(await launch(null), { calls: [], cached: true });
+  assert.deepEqual(await launch({ platform: "windows" }), { calls: [], cached: true });
+  assert.deepEqual(await launch({ platform: "windows" }, [{ active: true, machine: "remote" }]), {
+    calls: [["quota-axi", "remote"], ["sh", "remote"], ["cmd.exe", "remote"]],
+    cached: true,
+  });
 });
 function swatch(tree, id, text) {
   const chip = find(tree, id);
@@ -215,25 +233,40 @@ test("default chips and chrome use local icon files", () => {
   const h = harness("bar");
   const tree = h.mod.render(h.cx);
   const bar = find(tree, "quota-manager-bar");
-  assert.ok("justify_end" in bar.attrs);
-  assert.equal("bg" in bar.attrs, false);
-  assert.equal("border_t" in bar.attrs, false);
+  assert.equal(bar.attrs.bg, "theme.chrome");
+  assert.equal(bar.attrs.border_t, 1);
+  assert.equal("justify_end" in bar.attrs, false);
+  const slot = find(tree, "quota-slot");
+  assert.ok("flex_1" in slot.attrs);
+  assert.ok("justify_end" in slot.attrs);
+  find(tree, "machine-label");
+  find(tree, "agent-count");
+  assert.equal(find(tree, "palette").content.at(-1), "commands");
+  find(tree, "palette").events.on_click({}, h.cx);
+  assert.deepEqual(host.state.commands.at(-1), ["app.palette"]);
   const strip = find(tree, "quota-strip");
   assert.ok("flex_none" in strip.attrs);
-  assert.equal(strip.attrs.h, 24);
-  for (const id of ["codex", "agy", "grok", "cursor"]) {
+  assert.equal("bg" in strip.attrs, false);
+  assert.equal("border" in strip.attrs, false);
+  const marks = {
+    codex: ["image", "icons/codex.svg"],
+    agy: ["image", "icons/antigravity.svg"],
+    grok: ["svg", "icons/grok.svg"],
+    cursor: ["svg", "icons/cursor.svg"],
+  };
+  for (const [id, [kind, path]] of Object.entries(marks)) {
     const chip = find(tree, `chip-${id}-empty`);
-    const images = nodes(chip).filter(n => n.kind === "image");
-    assert.equal(images.length, 1);
-    assert.equal(images[0].attrs.path, `mods/quota-manager/icons/${id}.svg`);
-    assert.equal(images[0].attrs.w, 14);
-    assert.equal(images[0].attrs.h, 14);
+    const mark = nodes(chip).find(n => n.kind === kind && n.attrs.path === path);
+    assert.ok(mark, id);
+    assert.equal(nodes(chip).some(n => n.attrs.path === `mods/quota-manager/icons/${id}.svg`), false);
+    if (kind === "svg") assert.equal(mark.attrs.text_color, "theme.foreground");
+    else { assert.equal(mark.attrs.w, 14); assert.equal(mark.attrs.h, 14); }
   }
   h.mod.screen = "usage";
   const card = find(h.mod.render(h.cx), "provider-codex-empty");
   const cardImages = nodes(card).filter(n => n.kind === "image");
   assert.equal(cardImages.length, 1);
-  assert.equal(cardImages[0].attrs.path, "mods/quota-manager/icons/codex.svg");
+  assert.equal(cardImages[0].attrs.path, "icons/codex.svg");
   assert.equal(nodes(card).some(n => (n.content ?? []).includes("CX")), false);
   for (const [id, file, label] of [["bar-refresh", "refresh.svg", "Refresh"], ["bar-settings", "settings.svg", "Settings"]]) {
     const control = find(tree, id);

@@ -1,6 +1,5 @@
 {
-  "place": "bottom",
-  "size": 30,
+  "place": "none",
   "focusable": true,
   "overlay": { "width": 540, "height": 620 }
 }

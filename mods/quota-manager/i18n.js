@@ -9,7 +9,7 @@ const copy = {
   paused: ["Paused", "已暂停"], idle: ["Not queried", "尚未查询"], loading: ["Refreshing…", "正在刷新…"],
   fresh: ["Current", "已更新"], stale: ["Cached / stale", "缓存 / 已过期"], unavailable: ["Unavailable", "不可用"],
   auth_required: ["Sign-in required", "需要登录"], rate_limited: ["Rate limited", "查询受限"], error: ["Query failed", "查询失败"],
-  cli_missing: ["quota-axi not found on this machine", "此机器未找到 quota-axi"],
+  cli_missing: ["quota-axi is not available on this machine", "此机器上未找到可用的 quota-axi"],
   cli_failed: ["Collector failed. Check its version and run it in a terminal.", "采集器失败，请检查版本并在终端运行。"],
   invalid_report: ["Unsupported or invalid collector JSON (expected schema 5/6)", "采集器 JSON 无效或版本不支持（需要 schema 5/6）"],
   host_unavailable: ["Machine unavailable or query timed out", "机器不可达或查询超时"],
@@ -41,6 +41,6 @@ const copy = {
   language: ["Language", "语言"], display: ["Display", "显示方式"],
   updated: ["Observed", "数据时间"], retry: ["Retry after", "下次可重试"],
   queryHint: ["Query OFF stops collection; Show OFF only hides the row. ↑ / ↓ changes custom order.", "关闭查询会停止采集；关闭显示只隐藏对应行。↑ / ↓ 调整自定义顺序。"],
-  helpText: ["Install Node.js 22.19+ and quota-axi@0.1.69 on each queried machine. Sign in using that provider's CLI. This mod does not log you in.", "每台被查询机器需要 Node.js 22.19+ 和 quota-axi@0.1.69，并在相应 CLI 中登录。本 Mod 不负责登录。"],
+  helpText: ["This computer queries selected providers directly inside the Mod using the vendored quota-axi core. A remote computer still needs quota-axi on its PATH. Sign in with each provider's CLI; this mod does not log you in.", "本机在 Mod 内直接调用内置的 quota-axi 核心逻辑查询所选服务；远程电脑仍需要 PATH 中的 quota-axi 程序。请在对应 CLI 中登录，本 Mod 不负责登录。"],
 };
 export function tr(config, key) { return copy[key]?.[config.language === "zh" ? 1 : 0] ?? key; }
