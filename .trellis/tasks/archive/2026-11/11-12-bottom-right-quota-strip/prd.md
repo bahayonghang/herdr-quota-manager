@@ -1,5 +1,9 @@
 # Bottom-right quota strip
 
+## Correction (2026-11-12, after the first live window)
+
+The separate 30px row shortens the terminal. The chips belong in the existing status row, packed against the left side of the command hint. `place` is `none`. The personal layout's status block uses `quota-manager`, and the extra bottom block is removed. Marks for Codex, Antigravity, Grok, Cursor, and the other providers Herdr already ships use `icons/<file>.svg` from the Herdr home. Local two-letter tiles remain only where Herdr has no icon. Requirements 1–3 and 8 below are superseded by this correction. The installer still does not write layouts.
+
 ## Goal
 
 The Herdr window shows one quota line, packed to the bottom-right, with a colored mark for each provider. The second copy above the workspace status line is gone.
