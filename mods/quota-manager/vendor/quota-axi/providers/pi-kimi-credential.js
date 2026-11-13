@@ -1,0 +1,141 @@
+// Adapted from quota-axi 0.1.69 (5734c41eee52eb9a80ba67f47269ebc06c0c41fc), MIT License, Copyright (c) 2026 Kun Chen.
+import { open, homedir, runtimeProcess } from "../runtime.js";
+import { classifyPiAuthEntry } from "../lib/pi-auth-store.js";
+import { resolvePiAuthFilePath } from "../lib/pi-agent-dir.js";
+import { traceInput } from "../lib/input-trace.js";
+const PI_PROVIDER_ID = "kimi-coding";
+const AUTH_FILE_LIMIT_BYTES = 64 * 1024;
+export function createPiKimiCredentialBroker(overrides = {}) {
+    const dependencies = {
+        environment: runtimeProcess.env,
+        homeDirectory: homedir,
+        readFile: readBoundedFile,
+        now: () => Date.now(),
+        ...overrides,
+    };
+    const inspect = async () => (await resolveCredential(dependencies)).status;
+    return {
+        resolve: () => resolveCredential(dependencies),
+        inspect,
+    };
+}
+async function resolveCredential(dependencies) {
+    const path = authFilePath(dependencies);
+    let contents;
+    try {
+        contents = await dependencies.readFile(path, AUTH_FILE_LIMIT_BYTES);
+    }
+    catch (error) {
+        return errorCode(error) === "ENOENT"
+            ? { status: "missing" }
+            : { status: "error" };
+    }
+    if (contents.byteLength > AUTH_FILE_LIMIT_BYTES) {
+        return { status: "invalid" };
+    }
+    let parsed;
+    try {
+        parsed = JSON.parse(contents.toString("utf8"));
+    }
+    catch {
+        return { status: "invalid" };
+    }
+    const classified = classifyPiAuthEntry(parsed, PI_PROVIDER_ID);
+    if (classified.status !== "present")
+        return classified;
+    const { entry } = classified;
+    // Pi stores a `kimi-coding` login as either a literal API key or the OAuth
+    // record it received from Kimi. Both are read in place: an expired OAuth
+    // record is reported as expired rather than refreshed, because refreshing
+    // would mutate Pi's auth state.
+    const type = stringValue(entry.type)?.toLowerCase();
+    if (type === "api_key") {
+        const apiKey = usableLiteralSecret(entry.key);
+        return apiKey !== undefined
+            ? { status: "available", kind: "api_key", credential: apiKey }
+            : { status: "invalid" };
+    }
+    if (type === "oauth") {
+        const access = usableLiteralSecret(entry.access);
+        if (access === undefined)
+            return { status: "invalid" };
+        const hasExpiry = Object.hasOwn(entry, "expires");
+        const expiresMs = timestampMs(entry.expires);
+        if (hasExpiry && expiresMs === undefined)
+            return { status: "invalid" };
+        if (expiresMs !== undefined && expiresMs <= dependencies.now()) {
+            return {
+                status: "expired",
+                refreshable: Object.hasOwn(entry, "refresh"),
+                credential: access,
+            };
+        }
+        return { status: "available", kind: "oauth", credential: access };
+    }
+    if (type === undefined)
+        return { status: "invalid" };
+    return { status: "unsupported" };
+}
+function authFilePath(dependencies) {
+    return resolvePiAuthFilePath(dependencies.environment, dependencies.homeDirectory);
+}
+function usableLiteralSecret(value) {
+    if (typeof value !== "string" || value.trim().length === 0) {
+        return undefined;
+    }
+    // Reject environment, template, and command references without resolving them.
+    if (value.startsWith("!") || value.includes("$")) {
+        return undefined;
+    }
+    if ([...value].some((character) => {
+        const code = character.charCodeAt(0);
+        return code <= 0x1f || code === 0x7f;
+    })) {
+        return undefined;
+    }
+    return value;
+}
+async function readBoundedFile(path, maxBytes) {
+    traceInput(path);
+    const file = await open(path, "r");
+    try {
+        const contents = new Uint8Array(maxBytes + 1);
+        let offset = 0;
+        while (offset < contents.byteLength) {
+            const { bytesRead } = await file.read(contents, offset, contents.byteLength - offset, null);
+            if (bytesRead === 0)
+                break;
+            offset += bytesRead;
+        }
+        return Buffer.from(contents.buffer, contents.byteOffset, offset);
+    }
+    finally {
+        await file.close();
+    }
+}
+function timestampMs(value) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+        // Pi stores OAuth expiry as epoch milliseconds.
+        return value < 1_000_000_000_000 ? value * 1000 : value;
+    }
+    if (typeof value === "string" && value.trim() !== "") {
+        const asNumber = Number(value);
+        if (Number.isFinite(asNumber)) {
+            return asNumber < 1_000_000_000_000 ? asNumber * 1000 : asNumber;
+        }
+        const parsed = Date.parse(value);
+        return Number.isNaN(parsed) ? undefined : parsed;
+    }
+    return undefined;
+}
+function stringValue(value) {
+    return typeof value === "string" ? value : undefined;
+}
+function errorCode(error) {
+    return error !== null &&
+        typeof error === "object" &&
+        "code" in error &&
+        typeof error.code === "string"
+        ? error.code
+        : undefined;
+}

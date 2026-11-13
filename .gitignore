@@ -10,3 +10,8 @@ coverage/
 .omp/
 .grok/
 ref/
+third_party/quota-axi/node_modules/
+third_party/quota-axi/dist/
+third_party/quota-axi/.deploy/
+mods/quota-manager/gpui-kit.d.ts
+mods/quota-manager/jsconfig.json

@@ -7,10 +7,11 @@
   "license": "MIT",
   "engines": { "node": ">=22.19.0" },
   "scripts": {
-    "test": "node --test",
-    "test:coverage": "node --experimental-test-coverage --test",
+    "test": "node --test ./tests/*.test.mjs",
+    "test:coverage": "node --experimental-test-coverage --test ./tests/*.test.mjs",
     "check": "node scripts/check.mjs",
     "check:herdr": "node scripts/check-herdr.mjs",
+    "build:vendor": "node scripts/build-vendor.mjs",
     "install:mod": "node scripts/install.mjs",
     "validate": "npm run check && npm test"
   }

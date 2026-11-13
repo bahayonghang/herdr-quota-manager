@@ -6,7 +6,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 async function walk(folder) {
   const result = [];
   for (const item of await readdir(folder, { withFileTypes: true })) {
-    if ([".git", "node_modules"].includes(item.name)) continue;
+    if ([".git", "node_modules", "third_party"].includes(item.name)) continue;
     const path = join(folder, item.name);
     result.push(...(item.isDirectory() ? await walk(path) : [path]));
   }
