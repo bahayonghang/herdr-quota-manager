@@ -40,7 +40,7 @@ node scripts/install.mjs --app-home "C:\Users\Your Name\.config\herdr-app"
 
 The installer checks a staging copy with `herdr-app check` **before** changing an existing install. If Herdr cannot be found on PATH or the check fails, it stops and leaves the old Mod untouched. Add the installed Herdr executable's directory to PATH and retry. `--skip-native-check` is an explicit development escape hatch, not a verified installation.
 
-The quota chips sit in the existing status row, immediately left of the command hint. Click the settings mark, select providers, then **Start selected queries**. First-run defaults select Codex / Antigravity / Grok / Cursor but **do not query until Start is clicked**. An upgrade preserves an existing user's consent and preferences.
+The quota chips sit in the existing status row, immediately left of the command hint. Click the settings mark, enable **Query** for the providers you want, choose **Local** to read this computer, then **Start selected queries**. **Show** only controls visibility. Refresh while collection is paused or no requested provider is selected opens settings; it never grants consent. First-run defaults select Codex / Antigravity / Grok / Cursor but **do not query until Start is clicked**. An upgrade preserves an existing user's consent and preferences.
 
 `place` is `none`, so Herdr does not add a row. On a personal layout, set the 28px status block's `content.mod` to `quota-manager`. That copy draws the machine, branch, agent count, the quota chips packed against the command hint. Remove any older `quota-manager` block. A second block repeats the row and shortens the terminal. A hidden block still polls. Clone a shipped layout before the edit. The installer does not write layouts.
 

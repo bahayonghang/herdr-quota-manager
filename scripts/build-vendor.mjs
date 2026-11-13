@@ -155,6 +155,30 @@ function transformDistModule(raw, relPosix) {
       .replace('"-readonly",\n    STATE_DB,', '"-readonly",\n    cursorStateDbPath(),');
   }
 
+  if (relPosix === "providers/codex.js") {
+    const jwtDecode = 'return JSON.parse(Buffer.from(padded, "base64").toString("utf8"));';
+    if (!code.includes(jwtDecode)) throw new Error("Unexpected Codex JWT decoder structure");
+    code = code.replace(jwtDecode, "return JSON.parse(decodeBase64Utf8(padded));");
+    runtimeNeeded.add("decodeBase64Utf8");
+  }
+
+  if (relPosix === "providers/agy.js") {
+    const start = code.indexOf("export async function fetchQuota(_options) {");
+    const end = code.indexOf("export async function fetchQuotaWithRuntime(", start);
+    if (start < 0 || end < 0) throw new Error("Unexpected Antigravity fetch structure");
+    code = 'import { readLocalAgyQuota } from "../lib/local-sources.js";\n' +
+      code.slice(0, start) + agyFetchSource() + code.slice(end);
+  }
+  if (relPosix === "providers/grok.js") {
+    const start = code.indexOf("async function fetchGrokConsumerQuota(credentials) {");
+    const end = code.indexOf("function readCredentialState(", start);
+    if (start < 0 || end < 0) throw new Error("Unexpected Grok fetch structure");
+    code = 'import { fetchLocalJson } from "../lib/local-sources.js";\n' +
+      code.slice(0, start) + grokFetchSource() + code.slice(end);
+    code = code.replace(/^const (?:CONSUMER_QUOTA_URL|EMPTY_GRPC_REQUEST|GRPC_MESSAGE_LIMIT_CHARS) = .*;\n/gm, "");
+    runtimeNeeded.add("decodeBase64Utf8");
+  }
+
   if (/(?<![./])\bprocess\.(?!js\b)/.test(code)) {
     code = code.replace(/(?<![./])\bprocess\.(?!js\b)/g, "runtimeProcess.");
     runtimeNeeded.add("runtimeProcess");
@@ -378,11 +402,13 @@ function candidateFiles(id, cleanHome, cacheBase, snapshot, env, plat) {
 async function preloadFile(vfs, filePath, plat) {
   if (!filePath) return;
   try {
-    const raw = await hostReadFile(filePath);
-    const bytes = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
+    // All preloaded inputs are text configuration/cache files. Native Buffer
+    // decoding is not Node-compatible, so preserve the host's UTF8 decoding.
+    const text = await hostReadFile(filePath, "utf8");
+    const bytes = Uint8Array.from(Buffer.from(text, "utf8"));
     const key = normKey(filePath, plat);
     const ino = createHash("sha256").update(key).digest().readUInt32BE(0) || 1;
-    vfs.set(key, { rawPath: filePath, bytes, mtimeMs: 0, ino });
+    vfs.set(key, { rawPath: filePath, bytes, text, mtimeMs: 0, ino });
   } catch {
     // Missing or unreadable files are valid absent inputs.
   }
@@ -405,7 +431,7 @@ async function flushCacheWrites(ctx) {
     if (!insideCacheBase(entry.rawPath, ctx.cacheBase, ctx.platform)) continue;
     try {
       await mkdir(dirname(entry.rawPath), { recursive: true });
-      await hostWriteFile(entry.rawPath, entry.bytes);
+      await hostWriteFile(entry.rawPath, entry.text ?? entry.bytes);
     } catch { /* Best-effort cache write. */ }
   }
 }
@@ -436,6 +462,7 @@ export async function runWithRuntimeContext(options, fn) {
     dirtyFiles: new Map(),
     deletedFiles: new Map(),
     fetchImpl: options?.fetchImpl ?? globalThis.fetch,
+    deadline: options?.deadline,
     traceStore: null,
   };
   active = ctx;
@@ -449,6 +476,15 @@ export async function runWithRuntimeContext(options, fn) {
 
 export function currentFetch() {
   return active?.fetchImpl ?? globalThis.fetch;
+}
+
+export function localQueryRuntime() {
+  return { home: active?.cleanHome || "", fetch: currentFetch(), deadline: active?.deadline };
+}
+
+export function decodeBase64Utf8(value) {
+  const binary = atob(value);
+  return decodeURIComponent(Array.from(binary, ch => "%" + ch.charCodeAt(0).toString(16).padStart(2, "0")).join(""));
 }
 
 export const runtimeProcess = {
@@ -489,7 +525,10 @@ export function readFileSync(filePath, encoding) {
   if (!active || !filePath) throw enoent(filePath);
   const entry = active.vfs.get(normKey(filePath, active.platform));
   if (!entry) throw enoent(filePath);
-  return encoding ? entry.bytes.toString(typeof encoding === "string" ? encoding : encoding.encoding ?? "utf8") : Buffer.from(entry.bytes);
+  const format = typeof encoding === "string" ? encoding : encoding?.encoding ?? "utf8";
+  if (encoding && /^utf-?8$/i.test(format) && entry.text !== undefined) return entry.text;
+  const bytes = entry.text !== undefined ? Buffer.from(entry.text, "utf8") : Buffer.from(entry.bytes);
+  return encoding ? bytes.toString(format) : bytes;
 }
 
 export function statSync(filePath, options) {
@@ -500,7 +539,7 @@ export function statSync(filePath, options) {
     throw enoent(filePath);
   }
   if (options?.bigint) {
-    const digest = createHash("sha256").update(entry.bytes).digest();
+    const digest = createHash("sha256").update(entry.text ?? entry.bytes).digest();
     const mtimeNs = BigInt(digest.readUInt32BE(0));
     return {
       dev: 1n,
@@ -534,10 +573,11 @@ export function writeSync() {}
 
 export function writeFileSync(filePath, data) {
   if (!active || !filePath) return;
-  const bytes = Buffer.isBuffer(data) ? Buffer.from(data) : Buffer.from(String(data), "utf8");
+  const text = typeof data === "string" ? data : undefined;
+  const bytes = text !== undefined ? Uint8Array.from(Buffer.from(text, "utf8")) : Uint8Array.from(data);
   const key = normKey(filePath, active.platform);
   const existing = active.vfs.get(key);
-  const entry = { rawPath: filePath, bytes, mtimeMs: Date.now(), ino: existing?.ino ?? active.vfs.size + 1 };
+  const entry = { rawPath: filePath, bytes, text, mtimeMs: Date.now(), ino: existing?.ino ?? active.vfs.size + 1 };
   active.vfs.set(key, entry);
   active.deletedFiles.delete(key);
   active.dirtyFiles.set(key, entry);
@@ -581,7 +621,7 @@ export async function open(filePath) {
     async read(buffer, offset, length) {
       const avail = Math.max(0, entry.bytes.byteLength - pos);
       const count = Math.min(length, avail);
-      if (count > 0) entry.bytes.copy(buffer, offset, pos, pos + count);
+      if (count > 0) buffer.set(entry.bytes.subarray(pos, pos + count), offset);
       pos += count;
       return { bytesRead: count };
     },
@@ -780,6 +820,153 @@ export async function readBoundedResponseBody(response, signal, fail) {
 `;
 }
 
+function agyFetchSource() {
+  return String.raw`export async function fetchQuota(_options) {
+    try {
+        const quota = await readLocalAgyQuota(normalizeAgyQuotaSummary);
+        return successProvider({ provider: "agy", label: "Antigravity", source: "cli-rpc",
+            windows: quota.windows, refreshedAt: quota.refreshedAt, sourcesTried: ["loopback"] });
+    } catch (error) {
+        const message = error?.message === "agy_discovery_limit"
+            ? "Antigravity daemon discovery limit" : "Antigravity local daemon unavailable";
+        return failedProvider({ provider: "agy", label: "Antigravity", status: "unavailable",
+            error: message, sourcesTried: ["loopback"],
+            attempts: [{ source: "loopback", status: "failed", error: message, degraded: false }] });
+    }
+}
+`;
+}
+
+function grokFetchSource() {
+  return String.raw`async function fetchGrokConsumerQuota(credentials) {
+    const headers = { Authorization: "Bearer " + credentials.key,
+        Accept: "application/json", "X-XAI-Token-Auth": "xai-grok-cli" };
+    try {
+        const encoded = credentials.key.split(".")[1];
+        const normalized = encoded.replace(/-/g, "+").replace(/_/g, "/");
+        const claims = JSON.parse(decodeBase64Utf8(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=")));
+        if (typeof claims.sub === "string" && claims.sub.length <= 4096 && !/[\r\n]/.test(claims.sub)) {
+            headers["x-userid"] = claims.sub;
+        }
+    } catch { /* Non-JWT credentials do not supply an identity hint. */ }
+    let response;
+    try {
+        response = await fetchLocalJson("https://cli-chat-proxy.grok.com/v1/billing?format=credits",
+            { headers }, RESPONSE_LIMIT_BYTES, API_TIMEOUT_MS);
+    } catch (error) {
+        if (/timeout|timed out/i.test(error?.message ?? "")) throw new TimeoutError();
+        if (error?.message === "response_too_large") throw new ResponseTooLargeError();
+        throw new SafeGrokError("Grok quota unavailable");
+    }
+    rejectUnusableUsageResponse(response);
+    const config = objectValue(objectValue(response.data)?.config);
+    const period = objectValue(config?.currentPeriod);
+    const used = config?.creditUsagePercent;
+    const kind = period?.type === "USAGE_PERIOD_TYPE_WEEKLY" ? "weekly"
+        : period?.type === "USAGE_PERIOD_TYPE_MONTHLY" ? "monthly" : undefined;
+    const start = typeof period?.start === "string" ? Date.parse(period.start) : NaN;
+    const end = typeof period?.end === "string" ? Date.parse(period.end) : NaN;
+    if (typeof used !== "number" || !Number.isFinite(used) || used < 0 || used > 100 ||
+        !kind || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) throw new ProtocolError();
+    return { windows: [{ id: "credits", label: kind === "weekly" ? "week" : "month", kind,
+        percentUsed: used, percentRemaining: 100 - used,
+        startsAt: new Date(start).toISOString(), resetsAt: new Date(end).toISOString() }], refreshedAt: nowIso() };
+}
+`;
+}
+
+function localSourcesModuleSource() {
+  return BANNER + String.raw`import { readdir, readFile } from "fs/promises";
+import { join } from "path";
+import { Buffer } from "buffer";
+import { localQueryRuntime } from "../runtime.js";
+
+let lastDaemon = null;
+const QUOTA_PATH = "/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary";
+
+function bounded(runtime, work, ms) {
+  return typeof runtime.deadline === "function" ? runtime.deadline(work, ms) : work;
+}
+
+function jsonRequest(runtime, url, options, limit, ms) {
+  // Capture the transport and timer before any await; a timed-out request may
+  // settle after another provider has acquired the serialized runtime context.
+  const fetchImpl = runtime.fetch;
+  const work = (async () => {
+    const response = await fetchImpl(url, options);
+    const ok = response.ok ?? (response.status >= 200 && response.status < 300);
+    let data = null;
+    if (ok) {
+      const text = await response.text();
+      if (Buffer.byteLength(text, "utf8") > limit) throw new Error("response_too_large");
+      data = JSON.parse(text);
+    }
+    return { status: response.status, ok, data,
+      headers: { get: name => response.headers?.get?.(name) ?? null } };
+  })();
+  return bounded(runtime, work, ms);
+}
+
+export function fetchLocalJson(url, options, limit, ms) {
+  return jsonRequest(localQueryRuntime(), url, options, limit, ms);
+}
+
+export async function readLocalAgyQuota(normalize) {
+  const runtime = localQueryRuntime();
+  if (!runtime.home) throw new Error("agy_daemon_unavailable");
+  const directory = join(runtime.home, ".gemini", "antigravity", "daemon");
+  let stopped = false;
+  const discovery = (async () => {
+    const names = (await readdir(directory)).filter(name => /^hub_[1-9]\d{0,4}\.json$/.test(name)).sort();
+    if (stopped) throw new Error("provider_timeout");
+    if (names.length > 256) throw new Error("agy_discovery_limit");
+    if (!names.length) throw new Error("agy_daemon_unavailable");
+    if (lastDaemon?.home === runtime.home && names.includes(lastDaemon.name)) {
+      names.splice(names.indexOf(lastDaemon.name), 1);
+      names.unshift(lastDaemon.name);
+    }
+    let next = 0;
+    return new Promise((resolve, reject) => {
+      const worker = async () => {
+        while (!stopped && next < names.length) {
+          const name = names[next++];
+          try {
+            const text = await readFile(join(directory, name), "utf8");
+            if (stopped) return;
+            if (Buffer.byteLength(text, "utf8") > 16384) continue;
+            const state = JSON.parse(text);
+            const port = Number(name.slice(4, -5));
+            if (!Number.isInteger(port) || port < 1 || port > 65535 || state.httpPort !== port ||
+                !Number.isInteger(state.pid) || state.pid <= 0 || typeof state.csrfToken !== "string" ||
+                !state.csrfToken.length || state.csrfToken.length > 4096 || /[\r\n]/.test(state.csrfToken)) continue;
+            const response = await jsonRequest(runtime, "http://127.0.0.1:" + port + QUOTA_PATH, {
+              method: "POST", headers: { accept: "application/json", "content-type": "application/json",
+                "connect-protocol-version": "1", "x-codeium-csrf-token": state.csrfToken },
+              body: JSON.stringify({ request: {}, forceRefresh: false }),
+            }, 262144, 1000);
+            if (stopped || !response.ok) continue;
+            const quota = normalize(response.data);
+            if (!quota?.windows?.length) continue;
+            lastDaemon = { home: runtime.home, name };
+            stopped = true;
+            resolve(quota);
+          } catch { /* Malformed or stale daemon state is not installation evidence. */ }
+        }
+      };
+      Promise.all(Array.from({ length: Math.min(4, names.length) }, worker)).then(() => {
+        if (!stopped) reject(new Error("agy_daemon_unavailable"));
+      }, reject);
+    });
+  })();
+  try {
+    return await bounded(runtime, discovery, 10000);
+  } finally {
+    stopped = true;
+  }
+}
+`;
+}
+
 function indexModuleSource() {
   return `${BANNER}import { annotateQuotaAdvice } from "./advice.js";
 import {
@@ -880,11 +1067,11 @@ async function fetchQuotaCore(providers, options, maxAgeSeconds = 0) {
   return annotateQuotaAdvice({ generatedAt, providers: results });
 }
 
-export async function queryLocalQuota(id, { force = false, home = "", appHome = "", platform = "unknown", snapshot, env, fetchImpl } = {}) {
+export async function queryLocalQuota(id, { force = false, home = "", appHome = "", platform = "unknown", snapshot, env, fetchImpl, deadline } = {}) {
   if (typeof id !== "string" || !Object.prototype.hasOwnProperty.call(PROVIDERS, id)) {
     throw new Error("Unsupported provider");
   }
-  return runWithRuntimeContext({ id, home, appHome, platform, snapshot, env, fetchImpl }, async () => {
+  return runWithRuntimeContext({ id, home, appHome, platform, snapshot, env, fetchImpl, deadline }, async () => {
     const options = { allowKeychainPrompt: false, refreshCredentials: false };
     const response = await fetchQuotaCore([id], options, force ? 0 : 90);
     const laneAbsent = response.providers.map(p => providerPresence(p, PROVIDERS[p.provider]) === "absent");
@@ -937,6 +1124,7 @@ export async function buildVendor({
   await writeFile(join(outDir, "version.js"), `${BANNER}export const VERSION = ${JSON.stringify(COLLECTOR_VERSION)};\n`);
   await writeFile(join(outDir, "runtime.js"), runtimeModuleSource());
   await writeFile(join(outDir, "lib", "http.js"), httpModuleSource());
+  await writeFile(join(outDir, "lib", "local-sources.js"), localSourcesModuleSource());
   await writeFile(join(outDir, "lib", "fetch-lock.js"), `${BANNER}export function fetchLockPath(cacheDir = "") { return \`\${cacheDir}/fetch.lock\`; }
 export function fetchLockPathFor(provider) { return \`lock:\${provider}\`; }
 export function withLockSync(_lockPath, fn) { return fn(); }

@@ -13,12 +13,16 @@ Native status bar / popup / settings / snapshot history
                  │
         per-machine/provider admission + cache
                  │
- local:  in-Mod queryLocalQuota(id, { force, platform, home, appHome })
+ local:  in-Mod queryLocalQuota(id, { force, platform, home, appHome, deadline })
          -> mods/quota-manager/vendor/quota-axi/index.js
  remote: exec("quota-axi", ["--json", "--provider", id, "--no-credential-refresh", ...], { on: machine })
                  │
        normalized, non-secret account lanes
 ```
+
+Local Antigravity reads validated `~/.gemini/antigravity/daemon/hub_<port>.json` state and queries the fixed loopback HTTP quota endpoint. Local Grok reads the official Grok Build JSON billing endpoint rather than a binary gRPC response that Herdr cannot expose. Both reuse existing quota normalization; they do not launch a CLI, log in, refresh credentials, or import browser cookies. Request secrets stay in memory.
+
+The active View task supplies a `deadline(promise, milliseconds)` callback backed by native timers for these adapted transports. Deadlines bound waiting and stop obsolete publication/discovery; Herdr fetch cannot cancel an already-started network request. These bounds do not retrofit cancellation into every upstream provider.
 
 ## Selection and concurrency
 
@@ -32,7 +36,7 @@ Success waits for the chosen interval. Failures exponentially back off up to one
 
 ## Machine and account identity
 
-A bar follows the current space unless configured local-only. Opening a popup snapshots the target machine into props. Every process fallback uses the same `on` option. No remote-to-local fallback exists.
+A bar follows the current space unless configured local-only. Opening a popup snapshots the target machine into props. Changing the active space preserves that pin. Explicitly changing the scope inside the popup re-pins it immediately, so selecting Local makes subsequent Start/refresh actions local. Every process fallback uses the same `on` option. No remote-to-local fallback exists.
 
 Cache/lease/history/alert keys encode `[machine, provider]`. Each result preserves its account lanes instead of indexing only by provider. Account labels are deterministic non-cryptographic hashes of opaque local lane keys; source account emails, credentials, locators, and arbitrary error text are discarded. The labels provide separation, not a cryptographic privacy guarantee or a verified user identity.
 

@@ -18,7 +18,7 @@ export function commandsFor(id, platform = "unknown", force = false) {
   return platform === "windows" ? [direct, windows] : platform === "unknown" ? [direct, unix, windows] : [direct, unix];
 }
 
-export async function fetchQuota(exec, id, { on = null, platform = "unknown", force = false, now = Date.now, local = null } = {}) {
+export async function fetchQuota(exec, id, { on = null, platform = "unknown", force = false, now = Date.now, local = null, deadline = null } = {}) {
   const providerId = assertProvider(id);
   if (on == null) {
     const runner = typeof local === "function" ? local : (local?.query ?? queryLocalQuota);
@@ -26,7 +26,7 @@ export async function fetchQuota(exec, id, { on = null, platform = "unknown", fo
     const appHome = typeof local?.appHome === "function" ? local.appHome() : (local?.appHome ?? "");
     let raw;
     try {
-      raw = await runner(providerId, { force, platform, home, appHome });
+      raw = await runner(providerId, { force, platform, home, appHome, ...(typeof deadline === "function" ? { deadline } : {}) });
     } catch (error) {
       const msg = error?.message ?? "";
       if (/timeout|timed out|unreachable|disconnect|offline/i.test(String(error))) throw new Error("host_unavailable");

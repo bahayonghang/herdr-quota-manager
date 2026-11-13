@@ -1,5 +1,5 @@
 // Adapted from quota-axi 0.1.69 (5734c41eee52eb9a80ba67f47269ebc06c0c41fc), MIT License, Copyright (c) 2026 Kun Chen.
-import { homedir, isAbsolute, join, spawn, runtimeProcess, RuntimeAbortController, runtimeSetTimeout, runtimeClearTimeout } from "../runtime.js";
+import { homedir, isAbsolute, join, spawn, decodeBase64Utf8, runtimeProcess, RuntimeAbortController, runtimeSetTimeout, runtimeClearTimeout } from "../runtime.js";
 import { retireCodexAccount, retireCachedSlot, readCachedCodexProvider, readCachedProvider, stampCodexStoredAccountId, } from "../cache.js";
 import { readJsonFileResult } from "../lib/fs.js";
 import { providerFetch } from "../lib/http.js";
@@ -1341,7 +1341,7 @@ function decodeJwtPayload(token) {
     try {
         const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
         const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
-        return JSON.parse(Buffer.from(padded, "base64").toString("utf8"));
+        return JSON.parse(decodeBase64Utf8(padded));
     }
     catch {
         return undefined;

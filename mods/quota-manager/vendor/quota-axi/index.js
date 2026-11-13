@@ -98,11 +98,11 @@ async function fetchQuotaCore(providers, options, maxAgeSeconds = 0) {
   return annotateQuotaAdvice({ generatedAt, providers: results });
 }
 
-export async function queryLocalQuota(id, { force = false, home = "", appHome = "", platform = "unknown", snapshot, env, fetchImpl } = {}) {
+export async function queryLocalQuota(id, { force = false, home = "", appHome = "", platform = "unknown", snapshot, env, fetchImpl, deadline } = {}) {
   if (typeof id !== "string" || !Object.prototype.hasOwnProperty.call(PROVIDERS, id)) {
     throw new Error("Unsupported provider");
   }
-  return runWithRuntimeContext({ id, home, appHome, platform, snapshot, env, fetchImpl }, async () => {
+  return runWithRuntimeContext({ id, home, appHome, platform, snapshot, env, fetchImpl, deadline }, async () => {
     const options = { allowKeychainPrompt: false, refreshCredentials: false };
     const response = await fetchQuotaCore([id], options, force ? 0 : 90);
     const laneAbsent = response.providers.map(p => providerPresence(p, PROVIDERS[p.provider]) === "absent");

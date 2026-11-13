@@ -14,6 +14,12 @@ Tests cover configuration sanitization, provider filtering, no-consent/no-select
 
 ## Required native checks
 
+### Windows local acceptance on 2026-11-13
+
+Herdr 0.1.15 was checked with the installed repair and real local accounts. A native refresh published fresh trusted windows and the actual status strip showed Codex 97%, Antigravity 69%, and Grok 50% remaining. Values are transient observations. Scope was Local, collection authorized, the three Query switches on, hidden Cursor Query off, with no remote quota cache or module errors.
+
+Final `just ci` passed 114/114 tests; `npm run check:herdr` and the official installer's staged check passed. Native acceptance also caught a Buffer conversion mismatch that Node-only tests missed; the repaired VFS preserves host UTF-8 text and has an observed-host regression fixture. Detailed evidence and coverage limits are in `.trellis/tasks/archive/2026-11/11-13-quota-refresh-empty/research/native-acceptance-20261113.md`. This acceptance covers these three providers on Windows, not the entire provider catalog or other platforms.
+
 On the actual Herdr machine, run:
 
 ```sh

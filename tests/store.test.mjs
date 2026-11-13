@@ -32,6 +32,15 @@ test("machine caches are distinct and subprocesses receive the machine", async (
   assert.equal(h.calls[0].kind, "local"); assert.equal(h.calls[1].kind, "exec");
   assert.equal(h.calls[1].options.on, "remote"); assert.notEqual(stateKey("cache", null, "codex"), stateKey("cache", "null", "codex"));
 });
+
+test("refresh threads the current deadline to local collection only", async () => {
+  const h = setup(), deadline = async promise => promise;
+  await h.store.refresh(null, "windows", { force: true, deadline });
+  assert.equal(h.calls[0].options.deadline, deadline);
+  await h.store.refresh("remote", "unknown", { force: true, deadline });
+  assert.equal(h.calls[1].kind, "exec");
+  assert.deepEqual(h.calls[1].options, { on: "remote", timeout: 45000 });
+});
 test("concurrent copies share a provider lease", async () => {
   const gate = deferred(), h = setup({ localQuery: () => gate.promise });
   const other = new QuotaStore({ read: h.read, write: h.write, exec: h.exec, local: h.local, now: h.now });

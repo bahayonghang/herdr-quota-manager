@@ -1,5 +1,11 @@
 // Adapted from quota-axi 0.1.69 (5734c41eee52eb9a80ba67f47269ebc06c0c41fc), MIT License, Copyright (c) 2026 Kun Chen.
 import { httpStub as http, httpsStub as https, mkdtemp, rm, symlink, writeFile, tmpdir, delimiter, join, runtimeProcess, runtimeSetTimeout, runtimeClearTimeout } from "../runtime.js";
+import { readLocalAgyQuota } from "../lib/local-sources.js";
+
+
+
+
+
 import { deleteCachedProvider, readCachedProvider, retireCachedSlot, } from "../cache.js";
 import { currentUserProcessListArgs, execFileText, } from "../lib/process.js";
 import { clampPercent, nowIso, parseEpochOrIso, percentRemaining, } from "../lib/time.js";
@@ -40,7 +46,17 @@ export const agyAdapter = {
     inspectAuth,
 };
 export async function fetchQuota(_options) {
-    return fetchQuotaWithRuntime(defaultRuntime);
+    try {
+        const quota = await readLocalAgyQuota(normalizeAgyQuotaSummary);
+        return successProvider({ provider: "agy", label: "Antigravity", source: "cli-rpc",
+            windows: quota.windows, refreshedAt: quota.refreshedAt, sourcesTried: ["loopback"] });
+    } catch (error) {
+        const message = error?.message === "agy_discovery_limit"
+            ? "Antigravity daemon discovery limit" : "Antigravity local daemon unavailable";
+        return failedProvider({ provider: "agy", label: "Antigravity", status: "unavailable",
+            error: message, sourcesTried: ["loopback"],
+            attempts: [{ source: "loopback", status: "failed", error: message, degraded: false }] });
+    }
 }
 export async function fetchQuotaWithRuntime(runtime) {
     const attempts = [{ source: "cli", status: "failed" }];

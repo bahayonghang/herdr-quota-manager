@@ -41,6 +41,8 @@ Provider marks are 14px, on the chip and the card header. `BRAND` in `ui.js` poi
 
 Settings mutations go through `save` / `changeConfig` or `moveProvider`. Query and Show are independent. Turning consent on also force-polls. Select detected writes query and show from the detection list captured for `this.host()`, and never turns Muse on. Select none sets every provider's query and show to false.
 
+The scope control uses `setScope`: explicit Local re-pins the current popup to null immediately; explicit Current captures the active space's machine. A later active-space change alone must not re-pin the popup. All manual refresh controls/keys/commands call `poll(..., true)`, which opens settings without collecting when consent or the requested Query selection blocks the request. Automatic polling does not open overlays.
+
 The help view may display `quota-axi --provider codex --json --no-credential-refresh` and the keychain-prompt example. Those strings are not passed to `exec`.
 
 ## Copy

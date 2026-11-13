@@ -196,11 +196,13 @@ function candidateFiles(id, cleanHome, cacheBase, snapshot, env, plat) {
 async function preloadFile(vfs, filePath, plat) {
   if (!filePath) return;
   try {
-    const raw = await hostReadFile(filePath);
-    const bytes = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
+    // All preloaded inputs are text configuration/cache files. Native Buffer
+    // decoding is not Node-compatible, so preserve the host's UTF8 decoding.
+    const text = await hostReadFile(filePath, "utf8");
+    const bytes = Uint8Array.from(Buffer.from(text, "utf8"));
     const key = normKey(filePath, plat);
     const ino = createHash("sha256").update(key).digest().readUInt32BE(0) || 1;
-    vfs.set(key, { rawPath: filePath, bytes, mtimeMs: 0, ino });
+    vfs.set(key, { rawPath: filePath, bytes, text, mtimeMs: 0, ino });
   } catch {
     // Missing or unreadable files are valid absent inputs.
   }
@@ -223,7 +225,7 @@ async function flushCacheWrites(ctx) {
     if (!insideCacheBase(entry.rawPath, ctx.cacheBase, ctx.platform)) continue;
     try {
       await mkdir(dirname(entry.rawPath), { recursive: true });
-      await hostWriteFile(entry.rawPath, entry.bytes);
+      await hostWriteFile(entry.rawPath, entry.text ?? entry.bytes);
     } catch { /* Best-effort cache write. */ }
   }
 }
@@ -254,6 +256,7 @@ export async function runWithRuntimeContext(options, fn) {
     dirtyFiles: new Map(),
     deletedFiles: new Map(),
     fetchImpl: options?.fetchImpl ?? globalThis.fetch,
+    deadline: options?.deadline,
     traceStore: null,
   };
   active = ctx;
@@ -267,6 +270,15 @@ export async function runWithRuntimeContext(options, fn) {
 
 export function currentFetch() {
   return active?.fetchImpl ?? globalThis.fetch;
+}
+
+export function localQueryRuntime() {
+  return { home: active?.cleanHome || "", fetch: currentFetch(), deadline: active?.deadline };
+}
+
+export function decodeBase64Utf8(value) {
+  const binary = atob(value);
+  return decodeURIComponent(Array.from(binary, ch => "%" + ch.charCodeAt(0).toString(16).padStart(2, "0")).join(""));
 }
 
 export const runtimeProcess = {
@@ -307,7 +319,10 @@ export function readFileSync(filePath, encoding) {
   if (!active || !filePath) throw enoent(filePath);
   const entry = active.vfs.get(normKey(filePath, active.platform));
   if (!entry) throw enoent(filePath);
-  return encoding ? entry.bytes.toString(typeof encoding === "string" ? encoding : encoding.encoding ?? "utf8") : Buffer.from(entry.bytes);
+  const format = typeof encoding === "string" ? encoding : encoding?.encoding ?? "utf8";
+  if (encoding && /^utf-?8$/i.test(format) && entry.text !== undefined) return entry.text;
+  const bytes = entry.text !== undefined ? Buffer.from(entry.text, "utf8") : Buffer.from(entry.bytes);
+  return encoding ? bytes.toString(format) : bytes;
 }
 
 export function statSync(filePath, options) {
@@ -318,7 +333,7 @@ export function statSync(filePath, options) {
     throw enoent(filePath);
   }
   if (options?.bigint) {
-    const digest = createHash("sha256").update(entry.bytes).digest();
+    const digest = createHash("sha256").update(entry.text ?? entry.bytes).digest();
     const mtimeNs = BigInt(digest.readUInt32BE(0));
     return {
       dev: 1n,
@@ -352,10 +367,11 @@ export function writeSync() {}
 
 export function writeFileSync(filePath, data) {
   if (!active || !filePath) return;
-  const bytes = Buffer.isBuffer(data) ? Buffer.from(data) : Buffer.from(String(data), "utf8");
+  const text = typeof data === "string" ? data : undefined;
+  const bytes = text !== undefined ? Uint8Array.from(Buffer.from(text, "utf8")) : Uint8Array.from(data);
   const key = normKey(filePath, active.platform);
   const existing = active.vfs.get(key);
-  const entry = { rawPath: filePath, bytes, mtimeMs: Date.now(), ino: existing?.ino ?? active.vfs.size + 1 };
+  const entry = { rawPath: filePath, bytes, text, mtimeMs: Date.now(), ino: existing?.ino ?? active.vfs.size + 1 };
   active.vfs.set(key, entry);
   active.deletedFiles.delete(key);
   active.dirtyFiles.set(key, entry);
@@ -399,7 +415,7 @@ export async function open(filePath) {
     async read(buffer, offset, length) {
       const avail = Math.max(0, entry.bytes.byteLength - pos);
       const count = Math.min(length, avail);
-      if (count > 0) entry.bytes.copy(buffer, offset, pos, pos + count);
+      if (count > 0) buffer.set(entry.bytes.subarray(pos, pos + count), offset);
       pos += count;
       return { bytesRead: count };
     },

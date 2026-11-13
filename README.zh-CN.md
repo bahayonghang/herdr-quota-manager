@@ -41,7 +41,7 @@ node scripts/install.mjs --app-home "C:\Users\你的用户名\.config\herdr-app"
 
 安装器先在暂存目录运行 `herdr-app check`，通过后才安装，并备份旧版本。找不到 Herdr 或原生检查失败时会退出，已有 Mod 不受影响。开发者可以显式传入 `--skip-native-check` 跳过，但这不等于安装已验证。
 
-额度芯片画在现有状态栏里，紧挨命令快捷键的左边，不再单独占一行。点击设置标记，选择 Provider，再点击 **Start selected queries / 开始查询所选服务**。新安装预选 Codex、Antigravity、Grok、Cursor，但点击开始前不进行额度查询。更新安装会保留已有设置和授权状态。`mod.json` 的 `place` 是 `none`。在个人布局里把 28px 状态栏块的 `content.mod` 改成 `quota-manager`，并删掉旧的额度块。安装器不会改布局。
+额度芯片画在现有状态栏里，紧挨命令快捷键的左边，不再单独占一行。点击设置标记，为所需服务开启 **Query / 查询**，选择 **Local / 本机**，再点击 **Start selected queries / 开始查询所选服务**。Show / 显示只控制可见性。暂停采集或未选中要查询的服务时，手动刷新会打开设置引导，不会自动授权。新安装预选 Codex、Antigravity、Grok、Cursor，但点击开始前不进行额度查询。更新安装会保留已有设置和授权状态。`mod.json` 的 `place` 是 `none`。在个人布局里把 28px 状态栏块的 `content.mod` 改成 `quota-manager`，并删掉旧的额度块。安装器不会改布局。
 
 设置中的 Language 可切换到中文。原生界面尚需在你的实际 Herdr 版本中验收，具体检查项见 [VALIDATION.md](docs/VALIDATION.md)。
 

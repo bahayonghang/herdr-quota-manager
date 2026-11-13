@@ -1,7 +1,7 @@
 import { View } from "gpui-kit";
 import { exec, props, theme, shared, setShared, spaces, agents, keys, window, knownAgents, openOverlay, closeOverlay, nextCommand, run, notify, home, appHome } from "herdr";
 import { IDS, provider, detectedProviders } from "./providers.js";
-import { CONFIG_KEY, INTERVALS, KINDS, normalizeConfig, changeConfig, moveProvider, machineFor } from "./config.js";
+import { CONFIG_KEY, INTERVALS, KINDS, normalizeConfig, changeConfig, moveProvider, machineFor, selectedProviders } from "./config.js";
 import { headline } from "./model.js";
 import { QuotaStore, stateKey } from "./store.js";
 import { tr } from "./i18n.js";
@@ -37,14 +37,33 @@ export default class QuotaManager extends View {
   config() { return normalizeConfig(shared(CONFIG_KEY)); }
   host() {
     const p = props();
-    return machineFor(this.config(), spaces(), p?.view && Object.prototype.hasOwnProperty.call(p, "on") ? p.on : undefined);
+    const pinned = this.scopeHost !== undefined ? this.scopeHost : p?.view && Object.prototype.hasOwnProperty.call(p, "on") ? p.on : undefined;
+    return machineFor(this.config(), spaces(), pinned);
   }
   save(patch, cx) { setShared(CONFIG_KEY, changeConfig(this.config(), patch)); cx.notify(); }
+  setScope(scope, cx) {
+    if (this.screen !== "bar") this.scopeHost = machineFor({ ...this.config(), scope }, spaces());
+    this.save({ scope }, cx);
+  }
   poll(cx, force = false, only = null) {
+    if (force && !selectedProviders(this.config()).some(id => !only || id === only)) {
+      this.open("settings"); cx.notify(); return;
+    }
     const host = this.host();
     // herdr-app check has no window, so window() is null. A missing platform tries every launcher.
     const platform = host === null ? (window()?.platform ?? "unknown") : "unknown";
-    cx.spawn(async cx => { await this.store.refresh(host, platform, { force, only }); cx.notify(); });
+    cx.spawn(async cx => {
+      const deadline = async (promise, ms) => {
+        let timer;
+        try {
+          return await Promise.race([promise, new Promise((_resolve, reject) => {
+            timer = cx.timer.after(ms, () => reject(new Error("query timed out")));
+          })]);
+        } finally { timer?.cancel(); }
+      };
+      await this.store.refresh(host, platform, { force, only, deadline: host === null ? deadline : null });
+      cx.notify();
+    });
   }
   open(view = "usage") {
     if (this.screen !== "bar") { this.screen = view; return; }
@@ -189,7 +208,7 @@ export default class QuotaManager extends View {
     section.child(line(t))
       .child(choice("interval", tr(cfg, "interval"), INTERVALS.map(n => [n, n ? `${n / 60000} ${tr(cfg, "minutes")}` : tr(cfg, "manual")]), cfg.interval, (interval, cx) => this.save({ interval }, cx), t))
       .child(choice("percentage", tr(cfg, "display"), ["remaining", "used"].map(v => [v, tr(cfg, v)]), cfg.percentage, (percentage, cx) => this.save({ percentage }, cx), t))
-      .child(choice("scope", tr(cfg, "machine"), ["current", "local"].map(v => [v, tr(cfg, v)]), cfg.scope, (scope, cx) => this.save({ scope }, cx), t))
+      .child(choice("scope", tr(cfg, "machine"), ["current", "local"].map(v => [v, tr(cfg, v)]), cfg.scope, (scope, cx) => this.setScope(scope, cx), t))
       .child(choice("sort", tr(cfg, "sort"), [["custom", tr(cfg, "custom")], ["remaining", tr(cfg, "tightest")]], cfg.sort, (sort, cx) => this.save({ sort }, cx), t))
       .child(choice("language", tr(cfg, "language"), [["en", "English"], ["zh", "中文"]], cfg.language, (language, cx) => this.save({ language }, cx), t))
       .child(text(tr(cfg, "windows"), t))

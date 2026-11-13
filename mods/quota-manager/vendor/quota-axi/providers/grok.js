@@ -1,5 +1,8 @@
 // Adapted from quota-axi 0.1.69 (5734c41eee52eb9a80ba67f47269ebc06c0c41fc), MIT License, Copyright (c) 2026 Kun Chen.
-import { homedir, join, runtimeProcess, RuntimeAbortController, RuntimeTextDecoder, runtimeSetTimeout, runtimeClearTimeout } from "../runtime.js";
+import { homedir, join, decodeBase64Utf8, runtimeProcess, RuntimeAbortController, runtimeSetTimeout, runtimeClearTimeout } from "../runtime.js";
+import { fetchLocalJson } from "../lib/local-sources.js";
+
+
 import { readCachedProvider, retireCachedSlot } from "../cache.js";
 import { readJsonFileResult } from "../lib/fs.js";
 import { providerFetch } from "../lib/http.js";
@@ -9,14 +12,11 @@ import { selectCredential, } from "./credential-selection.js";
 import { delegateCredentialRefresh, } from "./delegated-refresh.js";
 import { createPiXaiCredentialBroker, } from "./pi-xai-credential.js";
 import { withUsageFetchFailure } from "./usage-fetch-failure.js";
-const CONSUMER_QUOTA_URL = "https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig";
 /** Official, read-only model catalogs used only to verify bearer usability. */
 const GROK_BUILD_MODELS_URL = "https://cli-chat-proxy.grok.com/v1/models";
 const XAI_MODELS_URL = "https://api.x.ai/v1/models";
 const API_TIMEOUT_MS = 15_000;
 const RESPONSE_LIMIT_BYTES = 64 * 1024;
-const GRPC_MESSAGE_LIMIT_CHARS = 1_024;
-const EMPTY_GRPC_REQUEST = Uint8Array.from([0, 0, 0, 0, 0]);
 const GROK_SOURCE = "web";
 const PI_XAI_CREDENTIAL_SOURCE = "pi:xai";
 const GROK_CONSUMER_QUOTA_UNAVAILABLE_ERROR = "Grok consumer quota unavailable";
@@ -674,285 +674,38 @@ export function normalizeGrokConsumerPayload(payload, credentials) {
     };
 }
 async function fetchGrokConsumerQuota(credentials) {
-    const controller = new RuntimeAbortController();
-    const timer = runtimeSetTimeout(() => controller.abort(), API_TIMEOUT_MS);
+    const headers = { Authorization: "Bearer " + credentials.key,
+        Accept: "application/json", "X-XAI-Token-Auth": "xai-grok-cli" };
     try {
-        let response;
-        try {
-            response = await providerFetch(CONSUMER_QUOTA_URL, {
-                method: "POST",
-                headers: {
-                    Authorization: `Bearer ${credentials.key}`,
-                    Accept: "*/*",
-                    "Content-Type": "application/grpc-web+proto",
-                    Origin: "https://grok.com",
-                    Referer: "https://grok.com/?_s=usage",
-                    "x-grpc-web": "1",
-                    "x-user-agent": "connect-es/2.1.1",
-                },
-                body: EMPTY_GRPC_REQUEST,
-                signal: controller.signal,
-            });
+        const encoded = credentials.key.split(".")[1];
+        const normalized = encoded.replace(/-/g, "+").replace(/_/g, "/");
+        const claims = JSON.parse(decodeBase64Utf8(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=")));
+        if (typeof claims.sub === "string" && claims.sub.length <= 4096 && !/[\r\n]/.test(claims.sub)) {
+            headers["x-userid"] = claims.sub;
         }
-        catch (error) {
-            if (isAbortError(error) || controller.signal.aborted)
-                throw new TimeoutError();
-            throw new SafeGrokError("Grok quota unavailable");
-        }
-        rejectUnusableUsageResponse(response);
-        throwForGrpcStatus(response.headers.get("grpc-status"), response.headers.get("grpc-message"));
-        let bytes;
-        try {
-            bytes = await readBoundedBody(response);
-        }
-        catch (error) {
-            if (error instanceof SafeGrokError)
-                throw error;
-            if (isAbortError(error) || controller.signal.aborted)
-                throw new TimeoutError();
-            throw new SafeGrokError("Grok quota unavailable");
-        }
-        const payload = decodeGrpcWebPayload(bytes);
-        return normalizeGrokConsumerPayload(payload, credentials);
-    }
-    finally {
-        runtimeClearTimeout(timer);
-    }
-}
-async function readBoundedBody(response) {
-    const contentLength = response.headers.get("content-length");
-    if (contentLength && /^\d+$/.test(contentLength)) {
-        if (BigInt(contentLength) > BigInt(RESPONSE_LIMIT_BYTES))
-            throw new ResponseTooLargeError();
-    }
-    if (!response.body)
-        return new Uint8Array();
-    const reader = response.body.getReader();
-    const chunks = [];
-    let length = 0;
+    } catch { /* Non-JWT credentials do not supply an identity hint. */ }
+    let response;
     try {
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done)
-                break;
-            length += value.length;
-            if (length > RESPONSE_LIMIT_BYTES) {
-                await reader.cancel().catch(() => undefined);
-                throw new ResponseTooLargeError();
-            }
-            chunks.push(value);
-        }
+        response = await fetchLocalJson("https://cli-chat-proxy.grok.com/v1/billing?format=credits",
+            { headers }, RESPONSE_LIMIT_BYTES, API_TIMEOUT_MS);
+    } catch (error) {
+        if (/timeout|timed out/i.test(error?.message ?? "")) throw new TimeoutError();
+        if (error?.message === "response_too_large") throw new ResponseTooLargeError();
+        throw new SafeGrokError("Grok quota unavailable");
     }
-    finally {
-        reader.releaseLock();
-    }
-    const bytes = new Uint8Array(length);
-    let offset = 0;
-    for (const chunk of chunks) {
-        bytes.set(chunk, offset);
-        offset += chunk.length;
-    }
-    return bytes;
-}
-function decodeGrpcWebPayload(bytes) {
-    if (bytes.length === 0)
-        throw new ProtocolError();
-    if (!looksFramed(bytes[0]))
-        return bytes;
-    const dataFrames = [];
-    let trailerSeen = false;
-    let index = 0;
-    while (index < bytes.length) {
-        if (index + 5 > bytes.length)
-            throw new ProtocolError();
-        const flags = bytes[index];
-        if ((flags & 0x01) !== 0)
-            throw new ProtocolError();
-        if (flags !== 0 && flags !== 0x80)
-            throw new ProtocolError();
-        const length = new DataView(bytes.buffer, bytes.byteOffset + index + 1, 4).getUint32(0);
-        if (length > RESPONSE_LIMIT_BYTES)
-            throw new ProtocolError();
-        const start = index + 5;
-        const end = start + length;
-        if (!Number.isSafeInteger(end) || end > bytes.length)
-            throw new ProtocolError();
-        const frame = bytes.slice(start, end);
-        if (flags === 0x80) {
-            if (trailerSeen)
-                throw new ProtocolError();
-            trailerSeen = true;
-            const trailers = parseTrailerFields(frame);
-            throwForGrpcStatus(trailers.get("grpc-status") ?? null, trailers.get("grpc-message") ?? null);
-        }
-        else {
-            if (trailerSeen || dataFrames.length > 0)
-                throw new ProtocolError();
-            dataFrames.push(frame);
-        }
-        index = end;
-    }
-    if (dataFrames.length !== 1)
-        throw new ProtocolError();
-    return dataFrames[0];
-}
-function looksFramed(firstByte) {
-    return firstByte === 0 || firstByte === 1 || (firstByte & 0x80) !== 0;
-}
-function parseTrailerFields(bytes) {
-    const trailers = new Map();
-    const text = new RuntimeTextDecoder().decode(bytes);
-    for (const line of text.split(/\r?\n/)) {
-        const separator = line.indexOf(":");
-        if (separator <= 0)
-            continue;
-        trailers.set(line.slice(0, separator).trim().toLowerCase(), line.slice(separator + 1).trim());
-    }
-    return trailers;
-}
-function throwForGrpcStatus(value, message = null) {
-    if (value === null)
-        return;
-    if (!/^(?:[0-9]|1[0-6])$/.test(value))
-        throw new ProtocolError();
-    const status = Number(value);
-    if (status === 0)
-        return;
-    if (status === 16)
-        throw new SafeGrokError(GROK_SIGN_IN_REQUIRED_ERROR);
-    if (status === 7 && grpcMessageIndicatesAuthFailure(message))
-        throw new SafeGrokError(GROK_SIGN_IN_REQUIRED_ERROR);
-    if (status === 8)
-        throw new RateLimitError();
-    throw new SafeGrokError("Grok quota unavailable");
-}
-function grpcMessageIndicatesAuthFailure(value) {
-    if (!value || value.length > GRPC_MESSAGE_LIMIT_CHARS)
-        return false;
-    let message;
-    try {
-        message = decodeURIComponent(value);
-    }
-    catch {
-        return false;
-    }
-    if (message.length > GRPC_MESSAGE_LIMIT_CHARS)
-        return false;
-    return (/\b(?:unauthenticated|authentication required|sign[ -]?in required)\b/i.test(message) ||
-        /\bbad[ -]credentials\b/i.test(message) ||
-        /\b(?:oauth2|access token)\b[\s\S]{0,128}\bcould not be validated\b/i.test(message) ||
-        /\b(?:invalid|expired|missing|revoked)\s+(?:(?:oauth|access|auth(?:entication)?|bearer)\s+)*(?:token|credentials?|jwt)\b/i.test(message) ||
-        /\b(?:token|credentials?|jwt)\s+(?:is |are )?(?:invalid|expired|missing|revoked)\b/i.test(message));
-}
-function scanMessage(bytes) {
-    const fields = [];
-    let index = 0;
-    while (index < bytes.length) {
-        const key = readVarint(bytes, index);
-        index = key.index;
-        const fieldValue = key.value >> 3n;
-        if (fieldValue <= 0n || fieldValue > 0x1fffffffn)
-            throw new ProtocolError();
-        const field = Number(fieldValue);
-        const wire = Number(key.value & 7n);
-        if (wire === 0) {
-            const scalar = readVarint(bytes, index);
-            fields.push({ field, wire, value: scalar.value });
-            index = scalar.index;
-            continue;
-        }
-        if (wire === 1 || wire === 5) {
-            const length = wire === 1 ? 8 : 4;
-            if (index + length > bytes.length)
-                throw new ProtocolError();
-            fields.push({
-                field,
-                wire,
-                value: bytes.slice(index, index + length),
-            });
-            index += length;
-            continue;
-        }
-        if (wire === 2) {
-            const lengthValue = readVarint(bytes, index);
-            index = lengthValue.index;
-            if (lengthValue.value > BigInt(RESPONSE_LIMIT_BYTES))
-                throw new ProtocolError();
-            const length = Number(lengthValue.value);
-            const end = index + length;
-            if (!Number.isSafeInteger(end) || end > bytes.length)
-                throw new ProtocolError();
-            fields.push({ field, wire, value: bytes.slice(index, end) });
-            index = end;
-            continue;
-        }
-        throw new ProtocolError();
-    }
-    return fields;
-}
-function readVarint(bytes, start) {
-    let value = 0n;
-    let index = start;
-    for (let count = 0; count < 10 && index < bytes.length; count += 1) {
-        const byte = bytes[index];
-        index += 1;
-        if (count === 9 && byte > 1)
-            throw new ProtocolError();
-        value |= BigInt(byte & 0x7f) << BigInt(count * 7);
-        if ((byte & 0x80) === 0)
-            return { value, index };
-    }
-    throw new ProtocolError();
-}
-function messagesAt(fields, field) {
-    return fields
-        .filter((entry) => entry.field === field && entry.wire === 2)
-        .map((entry) => entry.value);
-}
-function firstMessage(fields, field) {
-    const bytes = messagesAt(fields, field)[0];
-    return bytes ? scanMessage(bytes) : undefined;
-}
-function varintAt(fields, field) {
-    return fields.find((entry) => entry.field === field && entry.wire === 0)?.value;
-}
-function floatAt(fields, field) {
-    const found = fields.find((entry) => entry.field === field && entry.wire === 5);
-    if (!found)
-        return undefined;
-    const value = new DataView(found.value.buffer, found.value.byteOffset, 4).getFloat32(0, true);
-    if (!Number.isFinite(value))
-        throw new ProtocolError();
-    return value;
-}
-function timestampAt(fields, field) {
-    const timestamp = firstMessage(fields, field);
-    if (!timestamp)
-        return undefined;
-    const seconds = safeNumber(varintAt(timestamp, 1));
-    if (seconds === undefined)
-        return undefined;
-    const milliseconds = seconds * 1_000;
-    if (!Number.isSafeInteger(milliseconds))
-        return undefined;
-    const date = new Date(milliseconds);
-    return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
-}
-function periodTypeAt(period) {
-    const value = varintAt(period, 1);
-    if (value === 2n)
-        return "weekly";
-    if (value === 1n)
-        return "monthly";
-    return "unspecified";
-}
-function safeNumber(value) {
-    if (value === undefined || value > BigInt(Number.MAX_SAFE_INTEGER))
-        return undefined;
-    return Number(value);
-}
-function clampExactPercent(value) {
-    return Math.min(100, Math.max(0, value));
+    rejectUnusableUsageResponse(response);
+    const config = objectValue(objectValue(response.data)?.config);
+    const period = objectValue(config?.currentPeriod);
+    const used = config?.creditUsagePercent;
+    const kind = period?.type === "USAGE_PERIOD_TYPE_WEEKLY" ? "weekly"
+        : period?.type === "USAGE_PERIOD_TYPE_MONTHLY" ? "monthly" : undefined;
+    const start = typeof period?.start === "string" ? Date.parse(period.start) : NaN;
+    const end = typeof period?.end === "string" ? Date.parse(period.end) : NaN;
+    if (typeof used !== "number" || !Number.isFinite(used) || used < 0 || used > 100 ||
+        !kind || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) throw new ProtocolError();
+    return { windows: [{ id: "credits", label: kind === "weekly" ? "week" : "month", kind,
+        percentUsed: used, percentRemaining: 100 - used,
+        startsAt: new Date(start).toISOString(), resetsAt: new Date(end).toISOString() }], refreshedAt: nowIso() };
 }
 function readCredentialState() {
     const explicitAuthFile = stringValue(runtimeProcess.env.GROK_AUTH_JSON);

@@ -11,7 +11,7 @@ export const appHome = () => state.appHome ?? "C:/herdr-app";
 export const knownAgents = async options => { state.detectOn = options.on; return state.agents; };
 export const openOverlay = spec => { state.overlays.push(spec); return "overlay"; };
 export const closeOverlay = id => { state.closed = id; };
-export const nextCommand = () => new Promise(() => {});
+export const nextCommand = () => state.nextCommand ? state.nextCommand() : new Promise(() => {});
 export const run = (...args) => state.commands.push(args);
 export const notify = info => state.notices.push(info);
 export const exec = async (...args) => {
@@ -23,4 +23,5 @@ export function reset() {
   state.data.clear(); state.props = {}; state.executions = []; state.overlays = []; state.commands = [];
   state.agents = []; state.roster = []; state.keys = []; state.spaces = []; state.notices = []; state.closed = null;
   state.window = { platform: "windows" }; state.execCode = 1; state.home = null; state.appHome = null;
+  state.nextCommand = null;
 }

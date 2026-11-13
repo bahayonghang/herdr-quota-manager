@@ -60,12 +60,13 @@ Add a provider by extending the `PROVIDERS` table, then add a schema fixture. Do
 ["--json", "--provider", assertProvider(id), "--no-credential-refresh", "--max-age", force ? "0" : "90s"]
 ```
 
-When `fetchQuota(exec, id, { on = null, platform = "unknown", force = false, now = Date.now, local = null })` is called with `on == null` (local machine):
+When `fetchQuota(exec, id, { on = null, platform = "unknown", force = false, now = Date.now, local = null, deadline = null })` is called with `on == null` (local machine):
 
 - It never calls `exec`, never spawns `node`, and never starts an external CLI.
 - It calls `queryLocalQuota(providerId, { force, platform, home, appHome })` in-process from `mods/quota-manager/vendor/quota-axi/index.js` (`allowKeychainPrompt: false, refreshCredentials: false`, `maxAgeSeconds` `0` if `force` else `90`), where `home` and `appHome` come from `local` (`main.js` binds them to Herdr `home()` and `appHome()`).
 - Thrown messages matching `timeout`, `timed out`, `unreachable`, `disconnect`, or `offline` map to `host_unavailable`; `invalid_report` and `cli_missing` pass through as fixed keys; any other error maps to redacted `cli_failed`.
 - Returned JSON string passes directly through `parseReport` and `normalizeReport`.
+- An optional function `deadline(promise, milliseconds)` is forwarded to the local runner; absent/non-function values do not change the runner's options. It originates from the active native async context, not preferences. The native local transport rules are in [Runtime Boundary](./runtime-boundary.md#scenario-native-local-quota-transports).
 
 When `on != null` (remote machine):
 

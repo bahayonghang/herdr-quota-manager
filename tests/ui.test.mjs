@@ -9,8 +9,9 @@ import { normalizeReport } from "../mods/quota-manager/model.js";
 import { IDS } from "../mods/quota-manager/providers.js";
 import { stateKey } from "../mods/quota-manager/store.js";
 import { tr } from "../mods/quota-manager/i18n.js";
-import { report, flush } from "./helpers.mjs";
+import { report, flush, deferred } from "./helpers.mjs";
 let folder, Mod, host;
+const refreshes = new WeakMap();
 before(async () => {
   folder = await mkdtemp(join(tmpdir(), "quota-ui-"));
   await cp(fileURLToPath(new URL("../mods/quota-manager/", import.meta.url)), folder, { recursive: true });
@@ -30,19 +31,31 @@ function harness(view = "bar", config = {}) {
   host.state.home = join(folder, "empty-home");
   host.state.appHome = join(folder, "app-home");
   host.setShared(CONFIG_KEY, normalizeConfig(config));
-  const errors = [], timers = [];
+  const errors = [], timers = [], timeouts = [];
   const cx = { notify() {}, stop_propagation() {}, focus_handle: () => ({ focus() {} }),
-    timer: { every: (ms, fn) => timers.push([ms, fn]) },
+    timer: { every: (ms, fn) => timers.push([ms, fn]), after: (ms, fn) => {
+      const task = { ms, fn, cancelled: false, cancel() { this.cancelled = true; } };
+      timeouts.push(task); return task;
+    } },
     spawn: fn => { Promise.resolve().then(() => fn(cx)).catch(e => errors.push(e)); },
   };
-  const mod = new Mod(); mod.init({}, cx);
-  return { mod, cx, errors, timers };
+  const mod = new Mod(); mod.init({}, cx); trackRefreshes(mod);
+  return { mod, cx, errors, timers, timeouts };
 }
-async function settle(mod, hostName = null, ids = ["agy", "codex", "cursor", "grok"]) {
-  for (let i = 0; i < 50; i++) {
-    await flush();
-    if (!ids.some(id => mod.store.busy(hostName, id))) break;
-  }
+function trackRefreshes(mod) {
+  const pending = new Set(), refresh = mod.store.refresh.bind(mod.store);
+  refreshes.set(mod, pending);
+  mod.store.refresh = (...args) => {
+    const promise = refresh(...args);
+    pending.add(promise);
+    promise.then(() => pending.delete(promise), () => pending.delete(promise));
+    return promise;
+  };
+}
+async function settle(mod) {
+  await flush(); // Start the poll tasks queued by the mock cx.spawn.
+  const pending = refreshes.get(mod);
+  while (pending.size) await Promise.all([...pending]);
 }
 function nodes(node) { return !node || typeof node !== "object" ? [] : [node, ...(node.content ?? []).flatMap(nodes)]; }
 function find(tree, id) {
@@ -82,13 +95,28 @@ test("language and detailed-mode controls persist", () => {
   click(h, "tab-usage"); click(h, "mode-detailed"); assert.equal(h.mod.config().mode, "detailed"); h.mod.close();
 });
 test("explicit Start begins selected queries, not every catalog provider", async () => {
-  const h = harness("settings", { interval: 0 }); click(h, "consent"); await settle(h.mod, null, ["agy", "codex", "cursor", "grok"]);
+  const h = harness("settings", { interval: 0 }); click(h, "consent"); await settle(h.mod);
   assert.equal(h.mod.config().consent, true);
   assert.equal(host.state.executions.length, 0);
   for (const id of ["agy", "codex", "cursor", "grok"]) assert.ok(host.shared(stateKey("cache", null, id)));
   for (const id of ["claude", "muse"]) assert.equal(host.shared(stateKey("cache", null, id)), undefined);
   assert.deepEqual(h.errors, []);
   h.mod.close();
+});
+
+test("refresh settlement awaits collector completion beyond fixed event-loop turns", async () => {
+  const h = harness("settings", { interval: 0 }); await settle(h.mod);
+  const gate = deferred();
+  h.mod.store.local.query = async id => { await gate.promise; return JSON.stringify(report(id, {}, Date.now())); };
+  click(h, "consent");
+  let settled = false;
+  const pending = settle(h.mod).then(() => { settled = true; });
+  for (let i = 0; i < 60; i++) await flush();
+  try { assert.equal(settled, false); }
+  finally { gate.resolve(); await pending; h.mod.close(); }
+  assert.equal(settled, true);
+  for (const id of ["agy", "codex", "cursor", "grok"]) assert.ok(host.shared(stateKey("cache", null, id)));
+  assert.deepEqual(h.errors, []);
 });
 test("Muse opt-in requires confirmation before enabling", () => {
   const h = harness("settings"); click(h, "query-muse"); assert.equal(h.mod.config().providers.muse.query, false);
@@ -100,6 +128,114 @@ test("detection and select-detected use the frozen popup machine and skip implic
   click(h, "detect"); await flush(); click(h, "select-detected");
   assert.equal(host.state.detectOn, null); assert.equal(h.mod.config().providers.codex.query, true);
   assert.equal(h.mod.config().providers.cursor.query, false); assert.equal(h.mod.config().providers.muse.query, false); h.mod.close();
+});
+
+test("explicit Local scope retargets a remote-pinned popup before Start", async () => {
+  const h = harness("settings", { interval: 0 }); await flush();
+  host.state.props = { view: "settings", overlay: "test", on: "remote-original" };
+  host.state.spaces = [{ active: true, machine: "remote-current" }];
+  assert.equal(h.mod.host(), "remote-original");
+  const calls = [];
+  h.mod.store.refresh = async (on, _platform, options) => calls.push({ on, force: options.force });
+  click(h, "scope-local");
+  assert.equal(h.mod.config().scope, "local");
+  assert.equal(h.mod.host(), null);
+  click(h, "consent"); await flush();
+  assert.deepEqual(calls, [{ on: null, force: true }]);
+  assert.equal(host.state.executions.length, 0);
+  h.mod.close();
+});
+
+test("explicit Current scope captures the active machine but later space changes preserve its pin", async () => {
+  const h = harness("settings", { interval: 0 }); await flush();
+  host.state.props = { view: "settings", overlay: "test", on: "remote-original" };
+  host.state.spaces = [{ active: true, machine: "remote-next" }];
+  assert.equal(h.mod.host(), "remote-original");
+  click(h, "scope-current");
+  assert.equal(h.mod.host(), "remote-next");
+  host.state.spaces = [{ active: true, machine: "remote-later" }];
+  assert.equal(h.mod.host(), "remote-next");
+  const calls = [];
+  h.mod.store.refresh = async on => calls.push(on);
+  click(h, "consent"); await flush();
+  assert.deepEqual(calls, ["remote-next"]);
+  h.mod.close();
+});
+
+test("blocked manual refresh button and keyboard open settings without collecting or enabling consent", async () => {
+  for (const source of ["button", "keyboard"]) {
+    const h = harness("bar"); await flush();
+    const calls = [];
+    h.mod.store.refresh = async (...args) => calls.push(args);
+    if (source === "button") click(h, "bar-refresh");
+    else h.mod.key({ keystroke: "r" }, h.cx);
+    await flush();
+    assert.equal(host.state.overlays.at(-1)?.props.view, "settings", source);
+    assert.deepEqual(calls, [], source);
+    assert.equal(h.mod.config().consent, false);
+    h.mod.close();
+  }
+  const allowed = harness("bar", { consent: true, interval: 0 }); await flush();
+  const calls = [];
+  allowed.mod.store.refresh = async (...args) => calls.push(args);
+  click(allowed, "bar-refresh"); await flush();
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][2].force, true);
+  assert.equal(host.state.overlays.length, 0);
+  allowed.mod.close();
+});
+
+test("blocked refresh command opens settings through the same admission guard", async () => {
+  host.reset();
+  host.state.nextCommand = (() => { let sent = false; return () => sent ? new Promise(() => {}) : (sent = true, Promise.resolve("refresh")); })();
+  host.state.home = join(folder, "empty-home"); host.state.appHome = join(folder, "app-home");
+  host.setShared(CONFIG_KEY, normalizeConfig());
+  const errors = [], calls = [];
+  const cx = { notify() {}, stop_propagation() {}, focus_handle: () => ({ focus() {} }),
+    timer: { every() {} }, spawn: fn => { Promise.resolve().then(() => fn(cx)).catch(e => errors.push(e)); } };
+  const mod = new Mod(); mod.init({}, cx);
+  mod.store.refresh = async (...args) => calls.push(args);
+  await flush();
+  assert.equal(host.state.overlays.at(-1)?.props.view, "settings");
+  assert.equal(calls.filter(args => args[2].force).length, 0);
+  assert.equal(mod.config().consent, false);
+  assert.deepEqual(errors, []); mod.close();
+});
+
+test("empty or disabled per-provider manual selection shows Query settings without turning it on", async () => {
+  const providers = Object.fromEntries(IDS.map(id => [id, { query: false, show: id === "codex" }]));
+  const h = harness("usage", { consent: true, interval: 0, providers }); await flush();
+  const calls = [];
+  h.mod.store.refresh = async (...args) => calls.push(args);
+  click(h, "refresh-all"); await flush();
+  assert.equal(h.mod.screen, "settings"); assert.deepEqual(calls, []);
+  h.mod.screen = "usage";
+  click(h, "refresh-codex-empty"); await flush();
+  assert.equal(h.mod.screen, "settings"); assert.deepEqual(calls, []);
+  assert.equal(h.mod.config().providers.codex.query, false); h.mod.close();
+});
+
+test("active poll deadlines cancel settled host timers and reject overdue work", async () => {
+  const h = harness("settings", { consent: true, interval: 0 }); await flush();
+  let deadline;
+  h.mod.store.refresh = async (_host, _platform, options) => { deadline = options.deadline; };
+  const taskCx = { ...h.cx };
+  const eventCx = { ...h.cx, timer: { after() { throw new Error("stale event context"); } },
+    spawn: fn => Promise.resolve().then(() => fn(taskCx)).catch(e => h.errors.push(e)) };
+  h.mod.poll(eventCx, true); await flush();
+  assert.equal(typeof deadline, "function");
+  assert.equal(await deadline(Promise.resolve("ready"), 15), "ready");
+  assert.equal(h.timeouts.at(-1).ms, 15);
+  assert.equal(h.timeouts.at(-1).cancelled, true);
+  const failed = deadline(Promise.reject(new Error("failed")), 20);
+  await assert.rejects(failed, /failed/);
+  assert.equal(h.timeouts.at(-1).cancelled, true);
+  const gate = deferred(), pending = deadline(gate.promise, 25), timer = h.timeouts.at(-1);
+  const rejected = assert.rejects(pending, /timed out/);
+  timer.fn(h.cx); await rejected;
+  assert.equal(timer.cancelled, true);
+  gate.resolve("late"); await flush();
+  assert.deepEqual(h.errors, []); h.mod.close();
 });
 test("compact bar exposes overflow and opens a machine-pinned popup", () => {
   const h = harness("bar"); h.mod.width = 220; host.state.spaces = [{ active: true, machine: "remote" }];
@@ -132,9 +268,10 @@ test("local init tolerates a null window and still uses a real window platform",
     };
     const mod = new Mod();
     mod.init({}, cx);
+    trackRefreshes(mod);
     mod.render(cx);
     const machine = spaces.find(s => s.active)?.machine ?? null;
-    await settle(mod, machine, ["codex"]);
+    await settle(mod);
     const cached = Boolean(host.shared(stateKey("cache", machine, "codex")));
     mod.close();
     assert.deepEqual(errors, []);

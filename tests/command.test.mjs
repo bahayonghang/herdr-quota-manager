@@ -47,6 +47,26 @@ test("local manual reads pass force: true and never invoke exec", async () => {
   assert.deepEqual(calls, [["codex", { force: true, platform: "linux", home: "/h", appHome: "/a" }]]);
 });
 
+test("local query forwards the active host deadline without changing runner-only calls", async () => {
+  const deadline = async promise => promise;
+  let received;
+  await fetchQuota(unexpectedExec, "codex", {
+    deadline,
+    local: async (id, options) => { received = options; return JSON.stringify(report(id)); },
+  });
+  assert.equal(received.deadline, deadline);
+  assert.equal(received.force, false);
+});
+
+test("remote query never invokes a local deadline or passes it to exec", async () => {
+  let deadlineCalls = 0;
+  await fetchQuota(async (_command, _args, options) => {
+    assert.deepEqual(options, { on: "remote", timeout: QUERY_TIMEOUT });
+    return ok;
+  }, "codex", { on: "remote", deadline: () => { deadlineCalls++; throw new Error("local only"); } });
+  assert.equal(deadlineCalls, 0);
+});
+
 test("no arbitrary provider can enter commandsFor or fetchQuota", async () => {
   for (const id of ["codex & whoami", "codex\nls", "$(env)", "codex,cursor", "../codex"]) {
     assert.throws(() => commandsFor(id));

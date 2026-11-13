@@ -12,7 +12,7 @@ export class QuotaStore {
   config() { return normalizeConfig(this.read(CONFIG_KEY)); }
   snapshot(host, id) { return this.read(stateKey("cache", host, id)) ?? null; }
   busy(host, id) { return (this.read(stateKey("lease", host, id))?.until ?? 0) > this.now(); }
-  async refresh(host, platform, { force = false, only = null } = {}) {
+  async refresh(host, platform, { force = false, only = null, deadline = null } = {}) {
     this.prune(host);
     const config = this.config();
     const ids = selectedProviders(config).filter(id => !only || only === id);
@@ -20,12 +20,12 @@ export class QuotaStore {
     const worker = async () => {
       while (!this.closed && at < ids.length) {
         const id = ids[at++];
-        await this.refreshOne(host, id, platform, force);
+        await this.refreshOne(host, id, platform, force, deadline);
       }
     };
     await Promise.all([worker(), worker()]);
   }
-  async refreshOne(host, id, platform, force) {
+  async refreshOne(host, id, platform, force, deadline = null) {
     const cfg = this.config(), start = this.now(), old = this.snapshot(host, id);
     if (this.closed || !selectedProviders(cfg).includes(id) || this.busy(host, id)) return;
     // Manual mode never fetches automatically, even on startup or a machine switch.
@@ -37,7 +37,8 @@ export class QuotaStore {
     // Shared synchronous state serializes admission across all copies in this app window.
     this.write(lockKey, { token, until: start + 150000 });
     try {
-      const lanes = await fetchQuota(this.exec, id, { on: host, platform, force, now: this.now, local: host == null ? this.local : null });
+      const lanes = await fetchQuota(this.exec, id, { on: host, platform, force, now: this.now,
+        local: host == null ? this.local : null, deadline: host == null ? deadline : null });
       if (!this.current(cfg, id, lockKey, token)) return;
       const now = this.now(), fresh = lanes.some(l => l.status === "fresh" && !l.stale);
       const failures = fresh ? 0 : (old?.failures ?? 0) + 1;
