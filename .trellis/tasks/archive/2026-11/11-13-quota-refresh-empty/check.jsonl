@@ -1,0 +1,9 @@
+{"file":".trellis/spec/mod/runtime-boundary.md","reason":"Check zero local subprocess, host timers and target capture"}
+{"file":".trellis/spec/mod/data-contracts.md","reason":"Check schema, privacy, admission and stale-publication rules"}
+{"file":".trellis/spec/mod/ui.md","reason":"Check explicit scope re-pin versus ordinary popup pin preservation"}
+{"file":".trellis/spec/tooling/verification.md","reason":"Meaningful regression checks, generated consistency and native acceptance"}
+{"file":".trellis/spec/tooling/installer.md","reason":"Installer-only rollout, preflight and reversible owned backup"}
+{"file":".trellis/tasks/archive/2026-11/11-13-quota-refresh-empty/research/agy-local-feasibility.md","reason":"Verify actual source, broad-enough stale candidate search and deadline behavior"}
+{"file":".trellis/tasks/archive/2026-11/11-13-quota-refresh-empty/research/grok-local-feasibility.md","reason":"Verify JSON field semantics and avoid invented quota or lossy protobuf decoding"}
+{"file":".trellis/tasks/archive/2026-11/11-13-quota-refresh-empty/research/local-repair-preflight.md","reason":"Require actual native local results and scope-switch regression coverage"}
+{"file":".trellis/tasks/archive/2026-11/11-13-quota-refresh-empty/research/native-buffer-findings.md","reason":"Check VFS text/bytes semantics and cache reload against actual native Buffer behavior"}

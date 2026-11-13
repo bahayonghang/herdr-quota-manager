@@ -1,0 +1,29 @@
+{
+  "id": "quota-refresh-empty",
+  "name": "quota-refresh-empty",
+  "title": "修复本机额度查询与刷新配置",
+  "description": "修复 Codex、Antigravity、Grok 的本机进程内采集、范围切换与刷新反馈，应用本机配置并以真实原生查询验收。",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "lyh",
+  "assignee": "lyh",
+  "createdAt": "2026-11-13",
+  "completedAt": "2026-11-13",
+  "branch": "bottom-right-quota-strip",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": "59cd333497b659985c51b7701c18b65ac7b9d7ed",
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "Local repair committed as 59cd333497b659985c51b7701c18b65ac7b9d7ed; user requested commit/archive after completed native acceptance. Final just ci114/114, native check, 84-file installed parity, local scope/consent and fresh native Codex97%, Antigravity69%, Grok50% verified. Hidden Cursor Query off; no remote quota cache. See research/native-acceptance-20261113.md. No push authorized.",
+  "meta": {
+    "native_acceptance": "passed",
+    "implementation": "committed_verified"
+  }
+}

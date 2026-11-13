@@ -1,0 +1,8 @@
+{"file":".trellis/spec/mod/runtime-boundary.md","reason":"Host lifecycle, direct local collector, active async context and captured machine rules"}
+{"file":".trellis/spec/mod/data-contracts.md","reason":"Consent, Query/Show, schema, cache privacy and revision/lease publication"}
+{"file":".trellis/spec/mod/ui.md","reason":"Existing settings/strip actions and popup pin contract"}
+{"file":".trellis/spec/tooling/verification.md","reason":"Focused regression tests and native acceptance limits"}
+{"file":".trellis/tasks/archive/2026-11/11-13-quota-refresh-empty/research/agy-local-feasibility.md","reason":"Verified daemon protocol, native discovery bounds and timeout requirements"}
+{"file":".trellis/tasks/archive/2026-11/11-13-quota-refresh-empty/research/grok-local-feasibility.md","reason":"Verified official JSON quota route, source provenance and field semantics"}
+{"file":".trellis/tasks/archive/2026-11/11-13-quota-refresh-empty/research/local-repair-preflight.md","reason":"Codex real preflight and explicit scope pin regression"}
+{"file":".trellis/tasks/archive/2026-11/11-13-quota-refresh-empty/research/native-buffer-findings.md","reason":"Observed native Buffer conversion failure and text-preserving VFS/cache/JWT repair"}
