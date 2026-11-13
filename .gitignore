@@ -3,3 +3,10 @@ coverage/
 *.log
 *.error
 .DS_Store
+.agents/
+.claude/
+.codex/
+.cursor/
+.omp/
+.grok/
+ref/
