@@ -1,0 +1,5 @@
+{"file":".trellis/spec/mod/ui.md","reason":"Strip, settings and dialog layout contracts"}
+{"file":".trellis/spec/mod/runtime-boundary.md","reason":"openOverlay shape, host APIs, popup pin"}
+{"file":".trellis/tasks/11-13-quota-ui-polish/research/design-analysis.md","reason":"Design findings and target layout"}
+{"file":".trellis/spec/tooling/verification.md","reason":"Test and native acceptance rules"}
+{"file":".trellis/tasks/11-13-popup-anchor/research/at-semantics.md","reason":"at is top-left in logical px; bounds come from mouse_down/move"}
