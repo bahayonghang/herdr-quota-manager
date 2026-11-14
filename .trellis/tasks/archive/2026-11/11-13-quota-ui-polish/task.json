@@ -1,0 +1,30 @@
+{
+  "id": "quota-ui-polish",
+  "name": "quota-ui-polish",
+  "title": "额度条与设置界面体验优化",
+  "description": "统一右下角额度条的套餐标签、让弹窗不遮挡状态栏、按 Herdr better-config 与 Orca 的分组逻辑重做设置页",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "lyh",
+  "assignee": "lyh",
+  "createdAt": "2026-11-13",
+  "completedAt": "2026-11-13",
+  "branch": "bottom-right-quota-strip",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "11-13-strip-plan-label",
+    "11-13-popup-anchor",
+    "11-13-settings-redesign"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}
