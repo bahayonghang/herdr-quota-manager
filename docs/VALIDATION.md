@@ -35,7 +35,7 @@ The native check loads and renders the initial state; it does not exercise every
 1. Verify first-run settings open without any quota request. Select only Codex and click Start; verify disabled providers are not queried.
 2. Toggle Query and Show separately; reload Herdr and verify persistence. Test manual-only mode after restart.
 3. Test Compact/Detailed, Used/Remaining, every quota-window filter, account-lane separation, ordering, and English/Chinese.
-4. Resize the window until the overflow control appears. Open/close the popup with mouse and Escape, and test keyboard focus/controls in both themes and your zoom level.
+4. Resize the window until the overflow control appears. Open the popup from a chip, `+N`, and the gear: the whole status bar stays visible below it, also in a short window. Open it with `s` / `u`: it is a centered dialog. Open/close the popup with mouse and Escape, and test keyboard focus/controls in both themes and your zoom level.
 5. Test an unauthenticated local provider, a missing remote `quota-axi` on PATH, an unreachable remote, and a provider rate limit. Unknown/stale information must stay visibly distinct from fresh quota. A remote miss means the `quota-axi` program is absent on that remote machine's PATH (never falls back to local).
 6. Change active machine while a popup is open: it must stay on its original machine. Reopen it to follow the new selection. Verify no remote failure invokes the local collector.
 7. Enable history/alerts deliberately, verify deduplication, and clear history on one machine without clearing another's.

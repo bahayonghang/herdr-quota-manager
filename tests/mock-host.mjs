@@ -18,7 +18,7 @@ export const exec = async (...args) => {
   state.executions.push(args);
   return { code: state.execCode, stdout: JSON.stringify({ schemaVersion: 5, generatedAt: new Date().toISOString(), providers: [{ provider: args[1][2], windows: [], state: { status: "auth_required" } }] }) };
 };
-export const theme = () => Object.fromEntries(["chrome", "popover", "selected", "raised", "hover", "foreground", "muted", "accent", "border", "dim", "blocked", "ansi1", "ansi2", "ansi3"].map(k => [k, `theme.${k}`]));
+export const theme = () => Object.fromEntries(["chrome", "popover", "selected", "raised", "hover", "foreground", "muted", "accent", "border", "dim", "blocked", "ansi1", "ansi2", "ansi3", "background", "accent_foreground"].map(k => [k, `theme.${k}`]));
 export function reset() {
   state.data.clear(); state.props = {}; state.executions = []; state.overlays = []; state.commands = [];
   state.agents = []; state.roster = []; state.keys = []; state.spaces = []; state.notices = []; state.closed = null;

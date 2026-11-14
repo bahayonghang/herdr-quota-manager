@@ -88,7 +88,11 @@ test("query and display toggles are independent and persist", () => {
 });
 test("ordering controls and keyboard controls update the actual preference", () => {
   const h = harness("settings"); click(h, "down-codex"); assert.equal(h.mod.config().order[1], "codex");
-  h.mod.key({ keystroke: "space" }, h.cx); assert.equal(h.mod.config().providers.agy.query, false); h.mod.close();
+  // The selection follows the moved provider, so its arrows stay under the pointer.
+  assert.equal(h.mod.selected, 1);
+  h.mod.key({ keystroke: "space" }, h.cx); assert.equal(h.mod.config().providers.codex.query, false);
+  h.mod.key({ keystroke: "ctrl-down" }, h.cx); assert.equal(h.mod.config().order[2], "codex"); assert.equal(h.mod.selected, 2);
+  h.mod.key({ keystroke: "up" }, h.cx); assert.equal(h.mod.selected, 1); h.mod.close();
 });
 test("language and detailed-mode controls persist", () => {
   const h = harness("settings"); click(h, "language-zh"); assert.equal(h.mod.config().language, "zh");
@@ -338,6 +342,20 @@ test("consent off keeps cached digits muted and an empty headline dim", () => {
   assert.equal(face.chip.attrs.accessibility_label.includes(" !"), false);
   empty.mod.close();
 });
+test("strip chips never paint the plan; the tooltip carries it", () => {
+  const providers = { codex: { query: true, show: true }, grok: { query: true, show: true } };
+  const h = harness("bar", { consent: true, providers }); h.mod.width = 2000;
+  const codex = cache("codex", { plan: "prolite", ...weekly({ percentRemaining: 97 }) });
+  const grok = cache("grok", { plan: "", ...weekly({ percentRemaining: 48 }) });
+  const tree = h.mod.render(h.cx);
+  const texts = id => nodes(find(tree, id)).flatMap(n => (n.content ?? []).filter(c => typeof c === "string"));
+  const codexTexts = texts(`chip-codex-${codex[0].key}`), grokTexts = texts(`chip-grok-${grok[0].key}`);
+  assert.equal(codexTexts.includes("prolite"), false);
+  assert.equal(codexTexts.length, grokTexts.length, "every chip has the same parts");
+  assert.match(find(tree, `chip-codex-${codex[0].key}`).attrs.accessibility_label, /^Codex · prolite: Weekly 97%/);
+  assert.match(find(tree, `chip-grok-${grok[0].key}`).attrs.accessibility_label, /^Grok: Weekly 48%/);
+  h.mod.close();
+});
 test("share-only strip uses the shared key instead of a passed reset", () => {
   const h = harness("bar", { consent: true, providers: { codex: { query: true, show: true } } });
   const lanes = cache("codex", {
@@ -422,4 +440,99 @@ test("default chips and chrome use local icon files", () => {
 test("popup close and Escape use the actual overlay id", () => {
   const h = harness("usage"); click(h, "close"); assert.equal(host.state.closed, "test");
   host.state.closed = null; h.mod.key({ keystroke: "escape" }, h.cx); assert.equal(host.state.closed, "test"); h.mod.close();
+});
+test("popupPlacement puts the popup's bottom above the bar and shrinks or declines in short windows", async () => {
+  const { popupPlacement } = await import(pathToFileURL(join(folder, "ui.js")));
+  const chip = { x: 1200, y: 1385, width: 60, height: 18 }, bar = { x: 0, y: 1380, width: 1700, height: 28 };
+  assert.deepEqual(popupPlacement(chip, bar), { at: { x: 720, y: 754 }, width: 540, height: 620 });
+  assert.deepEqual(popupPlacement({ ...chip, y: 405 }, { ...bar, y: 400 }), { at: { x: 720, y: 8 }, width: 540, height: 386 });
+  assert.equal(popupPlacement({ ...chip, y: 205 }, { ...bar, y: 200 }), null);
+  assert.equal(popupPlacement({ ...chip, x: 10 }, bar).at.x, 8);
+  // Without the bar's own bounds, the bar top is estimated from the centered control.
+  assert.equal(popupPlacement(chip, null).at.y + 620 + 6, 1380);
+  assert.equal(popupPlacement(null, bar), null);
+  assert.equal(popupPlacement({ x: 1, y: 2 }, bar), null);
+});
+test("bar presses open an anchored popup; keys open a centered dialog", () => {
+  const h = harness("bar", { consent: true, providers: { codex: { query: true, show: true } } });
+  const tree = h.mod.render(h.cx);
+  find(tree, "quota-manager-bar").events.on_mouse_move({ bounds: { x: 0, y: 900, width: 1700, height: 28 } }, h.cx);
+  const gear = find(tree, "bar-settings");
+  gear.events.on_mouse_down({ bounds: { x: 1600, y: 907, width: 13, height: 13 } }, h.cx);
+  gear.events.on_click({}, h.cx);
+  const popup = host.state.overlays.at(-1);
+  assert.equal(popup.kind, "popup");
+  assert.equal(popup.props.view, "settings");
+  assert.deepEqual(popup.at, { x: 1613 - 540, y: 900 - 6 - 620 });
+  assert.ok(popup.at.y + popup.height <= 900 - 6);
+  // The anchor is used once: a later key press does not reuse a stale position.
+  h.mod.key({ keystroke: "s" }, h.cx);
+  const dialog = host.state.overlays.at(-1);
+  assert.equal(dialog.kind, "dialog");
+  assert.equal(dialog.at, undefined);
+  assert.equal(dialog.props.view, "settings");
+  h.mod.close();
+});
+test("settings are four groups of title-left rows with switches, segments and no t.selected row fill", () => {
+  const h = harness("settings", { providers: { codex: { query: true, show: true }, cursor: { query: false, show: false } } });
+  const tree = h.mod.render(h.cx);
+  for (const id of ["group-collect", "group-providers", "group-display", "group-alerts"]) find(tree, id);
+  assert.equal(nodes(tree).some(n => n.attrs.id === "tab-settings"), true);
+  assert.equal(find(tree, "tab-settings").attrs.bg, "theme.raised");
+  // Query/Show are pill switches; on fills with the accent, off with hover.
+  assert.equal(find(tree, "query-codex").attrs.w, 36);
+  assert.equal(find(tree, "query-codex").attrs.bg, "theme.accent");
+  assert.equal(find(tree, "query-cursor").attrs.bg, "theme.background");
+  assert.equal(find(tree, "query-cursor").attrs.border_color, "theme.border");
+  // The selected row uses the hover fill, never the switch's own selected token.
+  assert.equal(find(tree, "select-codex").attrs.bg, "theme.hover");
+  assert.equal(nodes(tree).some(n => n.attrs.id?.startsWith("select-") && n.attrs.bg === "theme.selected"), false);
+  // Arrows only on the selected row, and only for custom order.
+  find(tree, "up-codex"); assert.equal(nodes(tree).some(n => n.attrs.id === "up-agy"), false);
+  click(h, "select-grok"); assert.equal(h.mod.selected, h.mod.config().order.indexOf("grok"));
+  find(h.mod.render(h.cx), "down-grok");
+  click(h, "sort-remaining");
+  assert.equal(nodes(h.mod.render(h.cx)).some(n => /^(up|down)-/.test(n.attrs.id ?? "")), false);
+  // Every interval, scope, percentage and threshold choice is a segment with the old id.
+  for (const id of ["interval-0", "interval-300000", "scope-local", "percentage-used", "threshold-10", "kind-weekly", "unavailable", "history-enabled", "help", "close"]) find(h.mod.render(h.cx), id);
+  const ids = nodes(h.mod.render(h.cx)).map(n => n.attrs.id).filter(Boolean);
+  assert.equal(ids.length, new Set(ids).size);
+  h.mod.close();
+});
+test("settings copy exists in both languages", () => {
+  for (const key of ["groupCollect", "groupProviders", "groupDisplay", "groupAlerts", "consentRow", "consentHint", "intervalHint", "manualShort", "percentRow", "unavailableHint", "providersHint", "historyTitle", "historyLimit"]) {
+    assert.notEqual(tr({ language: "en" }, key), key); assert.notEqual(tr({ language: "zh" }, key), key);
+    assert.notEqual(tr({ language: "en" }, key), tr({ language: "zh" }, key));
+  }
+});
+test("every strip control opens the popup at the strip's right edge", async () => {
+  const { popupPlacement } = await import(pathToFileURL(join(folder, "ui.js")));
+  const bar = { x: 0, y: 1380, width: 1700, height: 28 }, strip = { x: 1100, y: 1385, width: 420, height: 18 };
+  const codex = popupPlacement({ x: 1100, y: 1385, width: 90, height: 18 }, bar, strip);
+  const gear = popupPlacement({ x: 1507, y: 1387, width: 13, height: 13 }, bar, strip);
+  assert.deepEqual(codex, gear);
+  assert.equal(codex.at.x, 1520 - 540);
+  // Bounds from somewhere else (a stale strip) never pull the popup away from the pressed control.
+  assert.equal(popupPlacement({ x: 200, y: 1385, width: 60, height: 18 }, bar, strip).at.x, 8);
+
+  const providers = { codex: { query: true, show: true }, grok: { query: true, show: true } };
+  const h = harness("bar", { consent: true, providers }); h.mod.width = 2000;
+  const lanes = cache("codex", weekly({ percentRemaining: 97 }));
+  const tree = h.mod.render(h.cx);
+  find(tree, "quota-manager-bar").events.on_mouse_move({ bounds: bar }, h.cx);
+  find(tree, "quota-strip").events.on_mouse_move({ bounds: strip }, h.cx);
+  const press = (id, bounds) => { const n = find(tree, id); n.events.on_mouse_down({ bounds }, h.cx); n.events.on_click({}, h.cx); return host.state.overlays.at(-1); };
+  const fromChip = press(`chip-codex-${lanes[0].key}`, { x: 1100, y: 1385, width: 90, height: 18 });
+  const fromGear = press("bar-settings", { x: 1507, y: 1387, width: 13, height: 13 });
+  assert.deepEqual(fromChip.at, fromGear.at);
+  assert.equal(fromChip.props.height, fromChip.height);
+  h.mod.close();
+});
+test("the dialog pins the opened height so a short page does not shrink", () => {
+  for (const [height, expected] of [[386, 386], [undefined, 620]]) {
+    const h = harness("history");
+    host.state.props = { view: "history", overlay: "test", on: null, ...(height ? { height } : {}) };
+    assert.equal(find(h.mod.render(h.cx), "quota-manager-dialog").attrs.h, expected);
+    h.mod.close();
+  }
 });
